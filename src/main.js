@@ -1,5 +1,4 @@
-import { Ekakuvn } from "./modules/ekakuvn.js";
+import { Ekakuvn } from './modules/ekakuvn.js'
 
-const game = new Ekakuvn();
-game.create("#game");
-
+const game = new Ekakuvn()
+// game.setBackground()

@@ -1,22 +1,19 @@
-import { EkakuvnCanvas } from "./canvas.js";
+import { EkakuvnCanvas } from './canvas.js'
 
 export class Ekakuvn {
-	constructor(options = {}) {
-		let width = options["width"] || 1280
-		let height = options["height"] || 720
-		this.options = {
-			width: width,
-			height: height,
-			canvas: options["canvas"] || new EkakuvnCanvas(width, height)
-		};
+	options = {
+		mainSelector: '#ekakuvn-main',
+		width: 1280,
+		height: 720
 	}
 
-	create(elementSelector) {
-		this.options.canvas.create(elementSelector);
+	constructor(options) {
+		this.options = { ...this.options, ...options }
+		this.canvas = new EkakuvnCanvas(this.options.mainSelector, this.options.width, this.options.height)
 	}
 
 	setBackground(src) {
-		this.options.canvas.setBackground(src);
+		this.canvas.setBackground(src)
+		return this
 	}
 }
-
