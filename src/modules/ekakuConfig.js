@@ -27,7 +27,6 @@ export class EkakuConfig {
     }
 
     getAll() {
-        // return { ...this.#config };
         return { ...this.#config };
     }
 
