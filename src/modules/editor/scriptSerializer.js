@@ -19,39 +19,42 @@ export class ScriptSerializer {
 		this.#fileInput.click()
 	}
 
-	exportToFile() {
+	async exportToFile() {
 		const script = this.#state.toScript()
 		const json = JSON.stringify(script, null, '\t')
 		const title = this.#state.project.meta.title ?? 'untitled'
-		const filename = this.#slugify(title) + '.ekaku.json'
-		this.#downloadFile(filename, json, 'application/json')
+		const filename = this.#slugify(title) + '.evn'
+		const compressed = await this.#gzipCompress(json)
+		this.#downloadBlob(filename, new Blob([compressed], { type: 'application/gzip' }))
 	}
 
-	exportProjectToFile() {
-		// Export full editor project (including dataUrls, names, editor IDs)
+	async exportProjectToFile() {
 		const project = structuredClone(this.#state.project)
 		const json = JSON.stringify(project, null, '\t')
 		const title = project.meta.title ?? 'untitled'
-		const filename = this.#slugify(title) + '.ekaku-project.json'
-		this.#downloadFile(filename, json, 'application/json')
+		const filename = this.#slugify(title) + '.ekaku-project.evn'
+		const compressed = await this.#gzipCompress(json)
+		this.#downloadBlob(filename, new Blob([compressed], { type: 'application/gzip' }))
 	}
 
 	// --- Import ---
 
 	#importFile(file) {
 		const reader = new FileReader()
-		reader.onload = (e) => {
+		reader.onload = async (e) => {
 			try {
-				const data = JSON.parse(e.target.result)
+				const buffer = e.target.result
+				const json = await this.#readAsJson(buffer)
+				const data = JSON.parse(json)
 				this.#loadData(data)
 			} catch {
-				alert('Failed to parse file. Make sure it is a valid JSON file.')
+				alert('Failed to parse file. Make sure it is a valid .evn or JSON file.')
 			}
 		}
 		reader.onerror = () => {
 			alert('Failed to read file.')
 		}
-		reader.readAsText(file)
+		reader.readAsArrayBuffer(file)
 	}
 
 	#loadData(data) {
@@ -82,7 +85,7 @@ export class ScriptSerializer {
 	}
 
 	#importRuntimeScript(script) {
-		// Convert a runtime .ekaku.json script to editor project format
+		// Convert a runtime script to editor project format
 		const project = structuredClone(script)
 
 		// Ensure assets have names
@@ -113,10 +116,64 @@ export class ScriptSerializer {
 		this.#state.loadProject(project)
 	}
 
+	// --- Compression ---
+
+	async #gzipCompress(text) {
+		const encoder = new TextEncoder()
+		const input = encoder.encode(text)
+		const stream = new Blob([input]).stream().pipeThrough(new CompressionStream('gzip'))
+		const reader = stream.getReader()
+		const chunks = []
+		while (true) {
+			const { done, value } = await reader.read()
+			if (done) break
+			chunks.push(value)
+		}
+		// Concatenate all chunks into a single Uint8Array
+		const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0)
+		const result = new Uint8Array(totalLength)
+		let offset = 0
+		for (const chunk of chunks) {
+			result.set(chunk, offset)
+			offset += chunk.length
+		}
+		return result
+	}
+
+	async #gzipDecompress(buffer) {
+		const stream = new Blob([buffer]).stream().pipeThrough(new DecompressionStream('gzip'))
+		const reader = stream.getReader()
+		const chunks = []
+		while (true) {
+			const { done, value } = await reader.read()
+			if (done) break
+			chunks.push(value)
+		}
+		const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0)
+		const result = new Uint8Array(totalLength)
+		let offset = 0
+		for (const chunk of chunks) {
+			result.set(chunk, offset)
+			offset += chunk.length
+		}
+		return new TextDecoder().decode(result)
+	}
+
+	#isGzipped(buffer) {
+		const bytes = new Uint8Array(buffer, 0, 2)
+		return bytes[0] === 0x1f && bytes[1] === 0x8b
+	}
+
+	async #readAsJson(buffer) {
+		if (this.#isGzipped(buffer)) {
+			return await this.#gzipDecompress(buffer)
+		}
+		return new TextDecoder().decode(buffer)
+	}
+
 	// --- Helpers ---
 
-	#downloadFile(filename, content, mimeType) {
-		const blob = new Blob([content], { type: mimeType })
+	#downloadBlob(filename, blob) {
 		const url = URL.createObjectURL(blob)
 		const a = document.createElement('a')
 		a.href = url
