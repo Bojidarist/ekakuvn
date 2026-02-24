@@ -58,6 +58,10 @@ export class EditorState {
 		if (idx >= 0) arr.splice(idx, 1)
 	}
 
+	emit(event, data) {
+		this.#emit(event, data)
+	}
+
 	#emit(event, data) {
 		const arr = this.#listeners.get(event)
 		if (arr) {
@@ -80,6 +84,11 @@ export class EditorState {
 		// Ensure mainMenu exists for editor compatibility
 		if (!this.#project.meta.mainMenu) {
 			this.#project.meta.mainMenu = { background: null, title: null }
+		}
+
+		// Ensure folders array exists for backward compatibility
+		if (!this.#project.folders) {
+			this.#project.folders = []
 		}
 
 		this.#currentSceneId = this.#project.startScene ?? this.#project.scenes[0]?.id ?? null
@@ -337,7 +346,8 @@ export class EditorState {
 			type: asset.type,
 			path: asset.path,
 			dataUrl: asset.dataUrl ?? null,
-			name: asset.name ?? asset.id
+			name: asset.name ?? asset.id,
+			folderId: asset.folderId ?? null
 		}
 		this.#project.assets.push(entry)
 		this.#autoSave()
@@ -372,6 +382,115 @@ export class EditorState {
 
 	getAssetsByType(type) {
 		return this.#project.assets.filter(a => a.type === type)
+	}
+
+	getImageAssets() {
+		return this.#project.assets.filter(a => a.type === 'background' || a.type === 'character')
+	}
+
+	// --- Folders ---
+
+	get folders() {
+		return this.#project.folders
+	}
+
+	addFolder(name, parentId = null) {
+		this.#pushUndo()
+		const folder = {
+			id: this.#generateId('folder'),
+			name,
+			parentId
+		}
+		this.#project.folders.push(folder)
+		this.#autoSave()
+		this.#emit('foldersChanged', this.#project.folders)
+		return folder
+	}
+
+	removeFolder(folderId) {
+		this.#pushUndo()
+
+		// Collect all descendant folder IDs
+		const toRemove = new Set()
+		const collect = (id) => {
+			toRemove.add(id)
+			for (const f of this.#project.folders) {
+				if (f.parentId === id) collect(f.id)
+			}
+		}
+		collect(folderId)
+
+		// Move assets in deleted folders to parent of deleted folder
+		const deletedFolder = this.#project.folders.find(f => f.id === folderId)
+		const reparentTo = deletedFolder?.parentId ?? null
+		for (const asset of this.#project.assets) {
+			if (asset.folderId && toRemove.has(asset.folderId)) {
+				asset.folderId = reparentTo
+			}
+		}
+
+		this.#project.folders = this.#project.folders.filter(f => !toRemove.has(f.id))
+		this.#autoSave()
+		this.#emit('foldersChanged', this.#project.folders)
+		this.#emit('assetsChanged', this.#project.assets)
+	}
+
+	renameFolder(folderId, name) {
+		const folder = this.#project.folders.find(f => f.id === folderId)
+		if (!folder) return
+
+		this.#pushUndo()
+		folder.name = name
+		this.#autoSave()
+		this.#emit('foldersChanged', this.#project.folders)
+	}
+
+	moveAssetToFolder(assetId, folderId) {
+		const asset = this.#project.assets.find(a => a.id === assetId)
+		if (!asset) return
+
+		this.#pushUndo()
+		asset.folderId = folderId
+		this.#autoSave()
+		this.#emit('assetsChanged', this.#project.assets)
+	}
+
+	moveFolderToFolder(folderId, targetParentId) {
+		const folder = this.#project.folders.find(f => f.id === folderId)
+		if (!folder) return
+
+		// Prevent moving a folder into itself or its descendants
+		let check = targetParentId
+		while (check) {
+			if (check === folderId) return
+			const parent = this.#project.folders.find(f => f.id === check)
+			check = parent?.parentId ?? null
+		}
+
+		this.#pushUndo()
+		folder.parentId = targetParentId
+		this.#autoSave()
+		this.#emit('foldersChanged', this.#project.folders)
+	}
+
+	getAssetsInFolder(folderId) {
+		return this.#project.assets.filter(a => (a.folderId ?? null) === folderId)
+	}
+
+	getSubfolders(parentId) {
+		return this.#project.folders.filter(f => (f.parentId ?? null) === parentId)
+	}
+
+	getFolderPath(folderId) {
+		const path = []
+		let current = folderId
+		while (current) {
+			const folder = this.#project.folders.find(f => f.id === current)
+			if (!folder) break
+			path.unshift(folder)
+			current = folder.parentId
+		}
+		return path
 	}
 
 	// --- Undo / Redo ---
@@ -411,8 +530,12 @@ export class EditorState {
 		// Remove editor-only fields
 		for (const asset of script.assets) {
 			delete asset.name
+			delete asset.folderId
 			// If asset uses dataUrl, keep path pointing to it
 		}
+
+		// Remove folders (editor-only organization)
+		delete script.folders
 
 		// Remove character editor IDs (runtime doesn't need them)
 		for (const scene of script.scenes) {
@@ -446,6 +569,10 @@ export class EditorState {
 				if (!this.#project.meta.mainMenu) {
 					this.#project.meta.mainMenu = { background: null, title: null }
 				}
+				// Ensure folders array exists for backward compatibility
+				if (!this.#project.folders) {
+					this.#project.folders = []
+				}
 				this.#currentSceneId = this.#project.startScene ?? this.#project.scenes[0]?.id ?? null
 				return true
 			} catch {
@@ -470,6 +597,7 @@ export class EditorState {
 				}
 			},
 			assets: [],
+			folders: [],
 			startScene: null,
 			scenes: []
 		}

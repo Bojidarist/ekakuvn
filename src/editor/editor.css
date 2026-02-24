@@ -88,6 +88,12 @@ button:active {
 	background: var(--bg-selected);
 }
 
+button.toggle-active {
+	background: var(--accent-dim);
+	border-color: var(--accent);
+	color: var(--accent);
+}
+
 /* --- Main body --- */
 
 #editor-body {
@@ -200,6 +206,51 @@ button:active {
 
 /* Asset grid */
 
+.asset-breadcrumb {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 6px 12px;
+	font-size: 12px;
+	color: var(--text-secondary);
+	border-bottom: 1px solid var(--border-color);
+	flex-shrink: 0;
+	overflow-x: auto;
+	white-space: nowrap;
+}
+
+.breadcrumb-item {
+	cursor: pointer;
+	padding: 2px 4px;
+	border-radius: 3px;
+	transition: background 0.1s, color 0.1s;
+}
+
+.breadcrumb-item:hover {
+	background: var(--bg-hover);
+	color: var(--text-primary);
+}
+
+.breadcrumb-item.active {
+	color: var(--accent);
+	font-weight: 600;
+}
+
+.breadcrumb-item.drop-target {
+	background: var(--accent-dim);
+	outline: 1px solid var(--accent);
+}
+
+.breadcrumb-sep {
+	color: var(--text-secondary);
+	opacity: 0.5;
+}
+
+.panel-header-actions {
+	display: flex;
+	gap: 4px;
+}
+
 #asset-grid {
 	display: grid;
 	grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
@@ -251,6 +302,118 @@ button:active {
 	padding: 2px 4px;
 	background: rgba(0, 0, 0, 0.7);
 	color: var(--text-primary);
+	text-align: center;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.asset-item.folder-item {
+	flex-direction: column;
+	cursor: pointer;
+}
+
+.asset-item.folder-item .folder-icon {
+	font-size: 28px;
+}
+
+.asset-item.folder-item.drop-target,
+.asset-item.drop-target {
+	border-color: var(--accent);
+	background: var(--accent-dim);
+}
+
+.asset-empty {
+	grid-column: 1 / -1;
+	text-align: center;
+	color: var(--text-secondary);
+	font-size: 12px;
+	padding: 16px;
+}
+
+/* Inline rename input */
+
+.asset-label-edit {
+	position: absolute;
+	bottom: 0;
+	left: 0;
+	right: 0;
+	font-size: 9px;
+	padding: 2px 4px;
+	background: var(--bg-input);
+	color: var(--text-primary);
+	border: 1px solid var(--accent);
+	border-radius: 0;
+	outline: none;
+	text-align: center;
+	font-family: inherit;
+	z-index: 10;
+}
+
+.folder-item .asset-label-edit {
+	position: static;
+	font-size: 11px;
+	width: calc(100% - 8px);
+	margin-top: 2px;
+}
+
+/* Search bar */
+
+.asset-search {
+	display: flex;
+	align-items: center;
+	padding: 6px 8px;
+	border-bottom: 1px solid var(--border-color);
+	flex-shrink: 0;
+	gap: 4px;
+}
+
+.asset-search input {
+	flex: 1;
+	padding: 4px 8px;
+	border: 1px solid var(--border-color);
+	border-radius: var(--radius);
+	background: var(--bg-input);
+	color: var(--text-primary);
+	font-size: 12px;
+	font-family: inherit;
+	outline: none;
+}
+
+.asset-search input:focus {
+	border-color: var(--accent);
+}
+
+.asset-search input::placeholder {
+	color: var(--text-secondary);
+	opacity: 0.7;
+}
+
+.asset-search .search-clear {
+	padding: 2px 6px;
+	font-size: 14px;
+	line-height: 1;
+	border: none;
+	background: transparent;
+	color: var(--text-secondary);
+	cursor: pointer;
+}
+
+.asset-search .search-clear:hover {
+	color: var(--text-primary);
+}
+
+/* Search result folder path */
+
+.asset-label-path {
+	position: absolute;
+	bottom: 14px;
+	left: 0;
+	right: 0;
+	font-size: 8px;
+	padding: 1px 4px;
+	background: rgba(0, 0, 0, 0.5);
+	color: var(--text-secondary);
 	text-align: center;
 	white-space: nowrap;
 	overflow: hidden;
@@ -474,4 +637,154 @@ button:active {
 
 ::-webkit-scrollbar-thumb:hover {
 	background: var(--bg-hover);
+}
+
+/* --- Asset preview modal --- */
+
+.preview-overlay {
+	position: fixed;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.8);
+	z-index: 2000;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+}
+
+.preview-modal {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	max-width: 80vw;
+	max-height: 80vh;
+	cursor: default;
+}
+
+.preview-modal img {
+	max-width: 80vw;
+	max-height: 65vh;
+	object-fit: contain;
+	border-radius: var(--radius);
+	border: 1px solid var(--border-color);
+}
+
+.preview-modal-title {
+	font-size: 16px;
+	font-weight: 600;
+	color: var(--text-primary);
+	margin-top: 12px;
+}
+
+.preview-modal-meta {
+	font-size: 12px;
+	color: var(--text-secondary);
+	margin-top: 4px;
+}
+
+.preview-modal-close {
+	position: fixed;
+	top: 16px;
+	right: 20px;
+	font-size: 28px;
+	color: var(--text-secondary);
+	cursor: pointer;
+	background: none;
+	border: none;
+	padding: 4px 8px;
+	z-index: 2001;
+}
+
+.preview-modal-close:hover {
+	color: var(--text-primary);
+}
+
+/* --- Audio player --- */
+
+.audio-player {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px;
+	background: var(--bg-input);
+	border: 1px solid var(--border-color);
+	border-radius: var(--radius);
+	margin-top: 8px;
+}
+
+.audio-player button {
+	padding: 4px 10px;
+	font-size: 14px;
+	line-height: 1;
+	min-width: 32px;
+}
+
+.audio-player input[type="range"] {
+	flex: 1;
+	height: 4px;
+	accent-color: var(--accent);
+	cursor: pointer;
+}
+
+.audio-player .audio-time {
+	font-size: 11px;
+	color: var(--text-secondary);
+	min-width: 70px;
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+}
+
+/* Compact audio player for narrow panels */
+.audio-player-compact {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	padding: 8px 10px;
+	background: var(--bg-input);
+	border: 1px solid var(--border-color);
+	border-radius: var(--radius);
+	margin-top: 8px;
+}
+
+.audio-player-compact button {
+	padding: 4px 10px;
+	font-size: 14px;
+	line-height: 1;
+	min-width: 32px;
+	flex-shrink: 0;
+}
+
+.audio-player-compact .audio-time {
+	font-size: 11px;
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+	margin-left: auto;
+	line-height: 28px;
+}
+
+.audio-player-compact input[type="range"] {
+	width: 100%;
+	height: 4px;
+	accent-color: var(--accent);
+	cursor: pointer;
+}
+
+/* --- Properties panel asset preview --- */
+
+.prop-asset-preview {
+	margin-bottom: 12px;
+}
+
+.prop-asset-preview img {
+	width: 100%;
+	max-height: 200px;
+	object-fit: contain;
+	border-radius: var(--radius);
+	border: 1px solid var(--border-color);
+	background: var(--bg-dark);
+	cursor: pointer;
+}
+
+.prop-asset-preview img:hover {
+	border-color: var(--accent);
 }

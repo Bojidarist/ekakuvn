@@ -5,6 +5,7 @@ import { SceneManagerPanel } from '../modules/editor/sceneManagerPanel.js'
 import { PropertiesPanel } from '../modules/editor/propertiesPanel.js'
 import { DialogueEditor } from '../modules/editor/dialogueEditor.js'
 import { ScriptSerializer } from '../modules/editor/scriptSerializer.js'
+import { EkakuConfig } from '../modules/ekakuConfig.js'
 
 // --- Initialize state ---
 
@@ -63,6 +64,23 @@ document.getElementById('btn-preview').addEventListener('click', () => {
 	// Open runtime index.html with the script URL as a query parameter
 	const previewUrl = '../index.html?script=' + encodeURIComponent(url)
 	window.open(previewUrl, '_blank')
+})
+
+// --- Textbox preview toggle ---
+
+const editorConfig = new EkakuConfig('ekaku-editor-ui')
+const textboxBtn = document.getElementById('btn-toggle-textbox')
+
+// Restore toggle state from config
+const textboxVisible = editorConfig.get('textboxPreview') !== false
+editorCanvas.textboxVisible = textboxVisible
+textboxBtn.classList.toggle('toggle-active', textboxVisible)
+
+textboxBtn.addEventListener('click', () => {
+	const newState = !editorCanvas.textboxVisible
+	editorCanvas.textboxVisible = newState
+	editorConfig.set('textboxPreview', newState)
+	textboxBtn.classList.toggle('toggle-active', newState)
 })
 
 // --- Keyboard shortcuts ---

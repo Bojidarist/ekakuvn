@@ -5,7 +5,10 @@ export class EditorCanvas {
 	#renderer = null
 	#canvas = null
 	#dragging = null // { characterId, offsetX, offsetY }
+	#resizing = null // { characterId, handle, startX, startY, startScale, anchorX, anchorY }
 	#loadedImages = new Map()
+	#dialoguePreview = null // { speaker, text } or null
+	#textboxVisible = true
 
 	constructor(state) {
 		this.#state = state
@@ -18,6 +21,7 @@ export class EditorCanvas {
 		this.#renderer.setLayer('background', (r) => this.#drawBackground(r))
 		this.#renderer.setLayer('characters', (r) => this.#drawCharacters(r))
 		this.#renderer.setLayer('selection', (r) => this.#drawSelection(r))
+		this.#renderer.setLayer('textbox', (r) => this.#drawTextbox(r))
 		this.#renderer.setLayer('dropHint', () => {})
 
 		// Start render loop
@@ -43,10 +47,23 @@ export class EditorCanvas {
 		this.#state.on('projectChanged', () => this.#preloadSceneImages())
 
 		this.#preloadSceneImages()
+
+		// Listen for dialogue preview changes
+		this.#state.on('dialoguePreviewChanged', (data) => {
+			this.#dialoguePreview = data
+		})
 	}
 
 	get renderer() {
 		return this.#renderer
+	}
+
+	get textboxVisible() {
+		return this.#textboxVisible
+	}
+
+	set textboxVisible(visible) {
+		this.#textboxVisible = visible
 	}
 
 	#preloadSceneImages() {
@@ -162,12 +179,7 @@ export class EditorCanvas {
 
 		// Corner handles
 		const handleSize = 8
-		const corners = [
-			[drawX - handleSize / 2, drawY - handleSize / 2],
-			[drawX + drawW - handleSize / 2, drawY - handleSize / 2],
-			[drawX - handleSize / 2, drawY + drawH - handleSize / 2],
-			[drawX + drawW - handleSize / 2, drawY + drawH - handleSize / 2]
-		]
+		const corners = this.#getHandlePositions(drawX, drawY, drawW, drawH, handleSize)
 
 		for (const [cx, cy] of corners) {
 			renderer.drawRect(cx, cy, handleSize, handleSize, {
@@ -176,6 +188,124 @@ export class EditorCanvas {
 				strokeWidth: 1
 			})
 		}
+
+		// Scale tooltip during resize
+		if (this.#resizing && this.#resizing.characterId === selectedId) {
+			const pct = Math.round(scale * 100)
+			const ctx = renderer.context
+			ctx.save()
+			ctx.font = '12px sans-serif'
+			const text = `${pct}%`
+			const tw = ctx.measureText(text).width
+			const tx = drawX + drawW / 2 - tw / 2
+			const ty = drawY - 14
+			ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'
+			ctx.fillRect(tx - 4, ty - 12, tw + 8, 16)
+			ctx.fillStyle = '#ffcc00'
+			ctx.fillText(text, tx, ty)
+			ctx.restore()
+		}
+	}
+
+	#drawTextbox(renderer) {
+		if (!this.#textboxVisible) return
+
+		const preview = this.#dialoguePreview
+		if (!preview) return
+
+		const w = renderer.width
+		const h = renderer.height
+
+		// Match runtime DialogueBox styling
+		const boxHeight = 180
+		const boxMargin = 20
+		const boxPadding = 20
+		const boxRadius = 12
+
+		const boxX = boxMargin
+		const boxY = h - boxHeight - boxMargin
+		const boxW = w - boxMargin * 2
+
+		// Draw box background
+		renderer.drawRect(boxX, boxY, boxW, boxHeight, {
+			fill: 'rgba(0, 0, 0, 0.75)',
+			radius: boxRadius
+		})
+
+		const textX = boxX + boxPadding
+		let textY = boxY + boxPadding
+
+		// Draw speaker name
+		if (preview.speaker) {
+			renderer.drawText(preview.speaker, textX, textY, {
+				font: 'bold 22px sans-serif',
+				color: '#ffcc00'
+			})
+			textY += 30
+		}
+
+		// Draw dialogue text
+		if (preview.text) {
+			renderer.drawText(preview.text, textX, textY, {
+				font: '20px sans-serif',
+				color: '#ffffff',
+				maxWidth: boxW - boxPadding * 2,
+				lineHeight: 28
+			})
+		}
+	}
+
+	#getHandlePositions(drawX, drawY, drawW, drawH, handleSize) {
+		return [
+			[drawX - handleSize / 2, drawY - handleSize / 2],                    // top-left
+			[drawX + drawW - handleSize / 2, drawY - handleSize / 2],            // top-right
+			[drawX - handleSize / 2, drawY + drawH - handleSize / 2],            // bottom-left
+			[drawX + drawW - handleSize / 2, drawY + drawH - handleSize / 2]     // bottom-right
+		]
+	}
+
+	#hitTestHandle(canvasX, canvasY) {
+		const selectedId = this.#state.selectedElementId
+		if (!selectedId) return null
+
+		const scene = this.#state.currentScene
+		if (!scene) return null
+
+		const char = scene.characters.find(c => c.id === selectedId)
+		if (!char) return null
+
+		const img = this.#getImage(char.assetId)
+		if (!img) return null
+
+		const scale = char.scale ?? 1.0
+		const drawW = img.naturalWidth * scale
+		const drawH = img.naturalHeight * scale
+		const drawX = char.position.x * this.#renderer.width - drawW / 2
+		const drawY = char.position.y * this.#renderer.height - drawH
+
+		const handleSize = 8
+		const hitPad = 4 // extra hit area around handles
+		const corners = this.#getHandlePositions(drawX, drawY, drawW, drawH, handleSize)
+		const handleNames = ['top-left', 'top-right', 'bottom-left', 'bottom-right']
+
+		for (let i = 0; i < corners.length; i++) {
+			const [cx, cy] = corners[i]
+			if (canvasX >= cx - hitPad && canvasX <= cx + handleSize + hitPad &&
+				canvasY >= cy - hitPad && canvasY <= cy + handleSize + hitPad) {
+				return {
+					handle: handleNames[i],
+					characterId: char.id,
+					drawX, drawY, drawW, drawH
+				}
+			}
+		}
+
+		return null
+	}
+
+	#getHandleCursor(handle) {
+		if (handle === 'top-left' || handle === 'bottom-right') return 'nwse-resize'
+		return 'nesw-resize'
 	}
 
 	#getCanvasPosition(event) {
@@ -215,6 +345,49 @@ export class EditorCanvas {
 
 	#onMouseDown(e) {
 		const pos = this.#getCanvasPosition(e)
+
+		// Check resize handles first (only on currently selected character)
+		const handleHit = this.#hitTestHandle(pos.x, pos.y)
+		if (handleHit) {
+			const scene = this.#state.currentScene
+			if (!scene) return
+			const char = scene.characters.find(c => c.id === handleHit.characterId)
+			if (!char) return
+			const img = this.#getImage(char.assetId)
+			if (!img) return
+
+			const scale = char.scale ?? 1.0
+			const drawW = img.naturalWidth * scale
+			const drawH = img.naturalHeight * scale
+			const drawX = char.position.x * this.#renderer.width - drawW / 2
+			const drawY = char.position.y * this.#renderer.height - drawH
+
+			// Anchor is the opposite corner
+			let anchorX, anchorY
+			switch (handleHit.handle) {
+				case 'top-left': anchorX = drawX + drawW; anchorY = drawY + drawH; break
+				case 'top-right': anchorX = drawX; anchorY = drawY + drawH; break
+				case 'bottom-left': anchorX = drawX + drawW; anchorY = drawY; break
+				case 'bottom-right': anchorX = drawX; anchorY = drawY; break
+			}
+
+			this.#resizing = {
+				characterId: handleHit.characterId,
+				handle: handleHit.handle,
+				startX: pos.x,
+				startY: pos.y,
+				startScale: scale,
+				anchorX,
+				anchorY,
+				imgW: img.naturalWidth,
+				imgH: img.naturalHeight,
+				startPosition: { ...char.position }
+			}
+			this.#canvas.style.cursor = this.#getHandleCursor(handleHit.handle)
+			return
+		}
+
+		// Then check character body hits for dragging
 		const hit = this.#hitTestCharacter(pos.x, pos.y)
 
 		if (hit) {
@@ -229,9 +402,78 @@ export class EditorCanvas {
 	}
 
 	#onMouseMove(e) {
-		if (!this.#dragging) {
-			// Update cursor based on hover
+		// Handle resize drag
+		if (this.#resizing) {
 			const pos = this.#getCanvasPosition(e)
+			const scene = this.#state.currentScene
+			if (!scene) return
+			const char = scene.characters.find(c => c.id === this.#resizing.characterId)
+			if (!char) return
+
+			const r = this.#resizing
+			// Distance from anchor to current mouse
+			const curDist = Math.sqrt(
+				Math.pow(pos.x - r.anchorX, 2) + Math.pow(pos.y - r.anchorY, 2)
+			)
+			// Distance from anchor to start mouse
+			const startDist = Math.sqrt(
+				Math.pow(r.startX - r.anchorX, 2) + Math.pow(r.startY - r.anchorY, 2)
+			)
+
+			if (startDist > 0) {
+				let newScale = r.startScale * (curDist / startDist)
+				newScale = Math.max(0.05, Math.min(5, newScale))
+				char.scale = newScale
+
+				// Reposition so the anchor corner stays fixed.
+				// Characters are drawn with:
+				//   drawX = position.x * width - drawW / 2
+				//   drawY = position.y * height - drawH
+				// So: position.x = (drawX + drawW / 2) / width
+				//     position.y = (drawY + drawH) / height
+				const newW = r.imgW * newScale
+				const newH = r.imgH * newScale
+
+				let newDrawX, newDrawY
+				switch (r.handle) {
+					case 'top-left':
+						// anchor is bottom-right, so bottom-right stays fixed
+						newDrawX = r.anchorX - newW
+						newDrawY = r.anchorY - newH
+						break
+					case 'top-right':
+						// anchor is bottom-left
+						newDrawX = r.anchorX
+						newDrawY = r.anchorY - newH
+						break
+					case 'bottom-left':
+						// anchor is top-right
+						newDrawX = r.anchorX - newW
+						newDrawY = r.anchorY
+						break
+					case 'bottom-right':
+						// anchor is top-left
+						newDrawX = r.anchorX
+						newDrawY = r.anchorY
+						break
+				}
+
+				char.position.x = (newDrawX + newW / 2) / this.#renderer.width
+				char.position.y = (newDrawY + newH) / this.#renderer.height
+			}
+
+			this.#canvas.style.cursor = this.#getHandleCursor(r.handle)
+			return
+		}
+
+		if (!this.#dragging) {
+			// Update cursor based on hover (handles first, then characters)
+			const pos = this.#getCanvasPosition(e)
+			const handleHit = this.#hitTestHandle(pos.x, pos.y)
+			if (handleHit) {
+				this.#canvas.style.cursor = this.#getHandleCursor(handleHit.handle)
+				return
+			}
 			const hit = this.#hitTestCharacter(pos.x, pos.y)
 			this.#canvas.style.cursor = hit ? 'grab' : 'default'
 			return
@@ -261,6 +503,22 @@ export class EditorCanvas {
 	}
 
 	#onMouseUp() {
+		if (this.#resizing) {
+			const scene = this.#state.currentScene
+			if (scene) {
+				const char = scene.characters.find(c => c.id === this.#resizing.characterId)
+				if (char) {
+					this.#state.updateCharacter(scene.id, char.id, {
+						scale: char.scale,
+						position: { ...char.position }
+					})
+				}
+			}
+			this.#resizing = null
+			this.#canvas.style.cursor = 'default'
+			return
+		}
+
 		if (this.#dragging) {
 			const scene = this.#state.currentScene
 			if (scene) {
@@ -277,7 +535,7 @@ export class EditorCanvas {
 	}
 
 	#onClick(e) {
-		if (this.#dragging) return
+		if (this.#dragging || this.#resizing) return
 
 		const pos = this.#getCanvasPosition(e)
 		const hit = this.#hitTestCharacter(pos.x, pos.y)

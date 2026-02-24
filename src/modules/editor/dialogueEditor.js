@@ -3,6 +3,7 @@ export class DialogueEditor {
 	#listEl = null
 	#editingIndex = null
 	#editingType = null // 'dialogue' or 'choice'
+	#selectedDialogueIndex = null
 
 	constructor(state) {
 		this.#state = state
@@ -24,15 +25,23 @@ export class DialogueEditor {
 		this.#state.on('sceneChanged', () => {
 			this.#editingIndex = null
 			this.#editingType = null
+			this.#selectedDialogueIndex = null
+			this.#emitPreview(null)
 			this.render()
 		})
 		this.#state.on('projectChanged', () => {
 			this.#editingIndex = null
 			this.#editingType = null
+			this.#selectedDialogueIndex = null
+			this.#emitPreview(null)
 			this.render()
 		})
 
 		this.render()
+	}
+
+	#emitPreview(data) {
+		this.#state.emit('dialoguePreviewChanged', data)
 	}
 
 	render() {
@@ -87,6 +96,7 @@ export class DialogueEditor {
 	#renderDialogueRow(index, entry, scene) {
 		const row = document.createElement('div')
 		row.className = 'dialogue-entry'
+		if (this.#selectedDialogueIndex === index) row.className += ' active'
 		row.draggable = true
 
 		// Index
@@ -146,7 +156,17 @@ export class DialogueEditor {
 		row.appendChild(textEl)
 		row.appendChild(actions)
 
-		// Click to edit
+		// Click to select for preview
+		row.addEventListener('click', () => {
+			this.#selectedDialogueIndex = index
+			this.#emitPreview({
+				speaker: entry.speaker || null,
+				text: entry.text || ''
+			})
+			this.render()
+		})
+
+		// Double-click to edit
 		row.addEventListener('dblclick', () => {
 			this.#editingIndex = index
 			this.#editingType = 'dialogue'
@@ -231,6 +251,11 @@ export class DialogueEditor {
 		saveBtn.style.cssText = 'padding: 4px 12px; font-size: 12px;'
 		saveBtn.addEventListener('click', () => {
 			this.#state.updateDialogue(scene.id, index, {
+				speaker: speakerInput.value || null,
+				text: textInput.value
+			})
+			this.#selectedDialogueIndex = index
+			this.#emitPreview({
 				speaker: speakerInput.value || null,
 				text: textInput.value
 			})
