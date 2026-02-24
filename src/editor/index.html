@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<title>ekakuvn - Editor</title>
+		<link href="editor.css" rel="stylesheet">
+	</head>
+	<body>
+		<div id="editor-root">
+			<!-- Toolbar -->
+			<header id="toolbar">
+				<div class="toolbar-group">
+					<span class="toolbar-brand">ekakuvn</span>
+					<button id="btn-new" title="New Project">New</button>
+					<button id="btn-open" title="Open Project">Open</button>
+					<button id="btn-save" title="Save/Export Project">Save / Export</button>
+				</div>
+				<div class="toolbar-group">
+					<button id="btn-preview" title="Play Preview">Preview</button>
+				</div>
+			</header>
+
+			<!-- Main content area -->
+			<div id="editor-body">
+				<!-- Left sidebar: Scenes + Assets -->
+				<aside id="panel-left">
+					<section id="scene-list-panel">
+						<div class="panel-header">
+							<h3>Scenes</h3>
+							<button id="btn-add-scene" title="Add Scene">+</button>
+						</div>
+						<ul id="scene-list"></ul>
+					</section>
+					<section id="asset-panel">
+						<div class="panel-header">
+							<h3>Assets</h3>
+							<button id="btn-add-asset" title="Import Asset">+</button>
+						</div>
+						<div id="asset-grid"></div>
+					</section>
+				</aside>
+
+				<!-- Center: Canvas preview -->
+				<main id="panel-center">
+					<div id="canvas-container">
+						<canvas id="editor-canvas" width="1280" height="720"></canvas>
+					</div>
+				</main>
+
+				<!-- Right sidebar: Properties -->
+				<aside id="panel-right">
+					<section id="properties-panel">
+						<div class="panel-header">
+							<h3>Properties</h3>
+						</div>
+						<div id="properties-content"></div>
+					</section>
+				</aside>
+			</div>
+
+			<!-- Bottom: Dialogue editor -->
+			<footer id="panel-bottom">
+				<section id="dialogue-panel">
+					<div class="panel-header">
+						<h3>Dialogue</h3>
+						<button id="btn-add-dialogue" title="Add Dialogue Line">+ Line</button>
+						<button id="btn-add-choice" title="Add Choice">+ Choice</button>
+					</div>
+					<div id="dialogue-list"></div>
+				</section>
+			</footer>
+		</div>
+
+		<!-- Hidden file input for opening/importing -->
+		<input type="file" id="file-input-script" accept=".json,.ekaku.json" style="display:none">
+		<input type="file" id="file-input-asset" accept="image/*,audio/*" multiple style="display:none">
+
+		<script src="editor.js" type="module"></script>
+	</body>
+</html>

@@ -1,6 +1,10 @@
-import { EkakuvnCanvas } from './canvas.js'
+import { EkakuRuntime } from './runtime/runtime.js'
+
+export { EkakuRuntime }
 
 export class Ekakuvn {
+	#runtime = null
+
 	options = {
 		mainSelector: '#ekakuvn-main',
 		width: 1280,
@@ -9,11 +13,20 @@ export class Ekakuvn {
 
 	constructor(options) {
 		this.options = { ...this.options, ...options }
-		this.canvas = new EkakuvnCanvas(this.options.mainSelector, this.options.width, this.options.height)
 	}
 
-	setBackground(src) {
-		this.canvas.setBackground(src)
+	async loadScript(script) {
+		this.#runtime = new EkakuRuntime(this.options.mainSelector, script)
 		return this
+	}
+
+	async start() {
+		if (!this.#runtime) throw new Error('Ekakuvn: call loadScript() before start()')
+		await this.#runtime.start()
+		return this
+	}
+
+	get runtime() {
+		return this.#runtime
 	}
 }

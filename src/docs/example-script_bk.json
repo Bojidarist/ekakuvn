@@ -1,0 +1,181 @@
+{
+	"meta": {
+		"title": "The Mysterious Library",
+		"author": "ekakuvn",
+		"version": "1.0.0",
+		"resolution": {
+			"width": 1280,
+			"height": 720
+		}
+	},
+	"assets": [
+		{
+			"id": "bg-library",
+			"type": "background",
+			"path": "assets/backgrounds/library.png"
+		},
+		{
+			"id": "bg-hallway",
+			"type": "background",
+			"path": "assets/backgrounds/hallway.png"
+		},
+		{
+			"id": "char-alice",
+			"type": "character",
+			"path": "assets/characters/alice.png"
+		},
+		{
+			"id": "char-bob",
+			"type": "character",
+			"path": "assets/characters/bob.png"
+		},
+		{
+			"id": "music-calm",
+			"type": "music",
+			"path": "assets/music/calm-theme.mp3"
+		},
+		{
+			"id": "music-tense",
+			"type": "music",
+			"path": "assets/music/tense-theme.mp3"
+		},
+		{
+			"id": "sfx-door",
+			"type": "sound",
+			"path": "assets/sounds/door-creak.mp3"
+		}
+	],
+	"startScene": "scene-intro",
+	"scenes": [
+		{
+			"id": "scene-intro",
+			"background": "bg-library",
+			"music": {
+				"assetId": "music-calm",
+				"loop": true
+			},
+			"characters": [
+				{
+					"assetId": "char-alice",
+					"position": { "x": 0.3, "y": 0.5 },
+					"scale": 1.0,
+					"flipped": false
+				}
+			],
+			"dialogue": [
+				{
+					"speaker": "Alice",
+					"text": "Welcome to the old library. I've been waiting for you."
+				},
+				{
+					"speaker": "Alice",
+					"text": "There's something strange going on here. Books have been disappearing."
+				},
+				{
+					"speaker": null,
+					"text": "You look around the dimly lit library. Dust particles float in the air."
+				},
+				{
+					"speaker": "Alice",
+					"text": "Will you help me investigate?"
+				}
+			],
+			"choices": [
+				{
+					"text": "Of course, let's look around.",
+					"targetSceneId": "scene-investigate"
+				},
+				{
+					"text": "This place gives me the creeps. Let's leave.",
+					"targetSceneId": "scene-leave"
+				}
+			],
+			"next": null
+		},
+		{
+			"id": "scene-investigate",
+			"background": "bg-library",
+			"music": {
+				"assetId": "music-tense",
+				"loop": true
+			},
+			"characters": [
+				{
+					"assetId": "char-alice",
+					"position": { "x": 0.2, "y": 0.5 },
+					"scale": 1.0,
+					"flipped": false
+				},
+				{
+					"assetId": "char-bob",
+					"position": { "x": 0.7, "y": 0.5 },
+					"scale": 1.0,
+					"flipped": true
+				}
+			],
+			"dialogue": [
+				{
+					"speaker": null,
+					"text": "As you search the shelves, a figure emerges from the shadows."
+				},
+				{
+					"speaker": "Bob",
+					"text": "I see you've found my little collection."
+				},
+				{
+					"speaker": "Alice",
+					"text": "Bob?! You're the one who's been taking the books?"
+				},
+				{
+					"speaker": "Bob",
+					"text": "Taking? No. I've been protecting them. These books hold secrets that must not fall into the wrong hands."
+				}
+			],
+			"choices": null,
+			"next": "scene-hallway"
+		},
+		{
+			"id": "scene-hallway",
+			"background": "bg-hallway",
+			"music": null,
+			"characters": [
+				{
+					"assetId": "char-alice",
+					"position": { "x": 0.5, "y": 0.5 },
+					"scale": 1.0,
+					"flipped": false
+				}
+			],
+			"dialogue": [
+				{
+					"speaker": "Alice",
+					"text": "That was unexpected. I wonder what secrets he was talking about..."
+				},
+				{
+					"speaker": null,
+					"text": "To be continued..."
+				}
+			],
+			"choices": null,
+			"next": null
+		},
+		{
+			"id": "scene-leave",
+			"background": "bg-hallway",
+			"music": null,
+			"characters": [],
+			"dialogue": [
+				{
+					"speaker": null,
+					"text": "You decide to leave the library. Some mysteries are better left unsolved."
+				},
+				{
+					"speaker": null,
+					"text": "The End."
+				}
+			],
+			"choices": null,
+			"next": null
+		}
+	]
+}
