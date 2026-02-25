@@ -1,9 +1,12 @@
+import { Renderer } from './renderer.js'
+
 export class DialogueBox {
 	#renderer = null
 	#state = 'idle' // idle | typing | waiting | choices
 	#currentSpeaker = null
 	#currentText = ''
 	#revealedChars = 0
+	#visibleCharCount = 0
 	#typewriterSpeed = 30 // chars per second
 	#elapsed = 0
 	#choices = []
@@ -59,8 +62,8 @@ export class DialogueBox {
 		if (this.#state === 'typing') {
 			this.#elapsed += deltaTime
 			const charsToReveal = Math.floor(this.#elapsed * this.#typewriterSpeed)
-			if (charsToReveal >= this.#currentText.length) {
-				this.#revealedChars = this.#currentText.length
+			if (charsToReveal >= this.#visibleCharCount) {
+				this.#revealedChars = this.#visibleCharCount
 				this.#state = 'waiting'
 			} else {
 				this.#revealedChars = charsToReveal
@@ -97,23 +100,22 @@ export class DialogueBox {
 			textY += 30
 		}
 
-		// Draw revealed text
+		// Draw revealed text (with markup support)
 		if (this.#state === 'choices') {
 			// Show full text above choices
-			renderer.drawText(this.#currentText, textX, textY, {
+			renderer.drawRichText(this.#currentText, textX, textY, {
 				font: this.options.textFont,
 				color: this.options.textColor,
 				maxWidth: boxW - boxPadding * 2,
 				lineHeight: this.options.textLineHeight
 			})
 		} else {
-			const visibleText = this.#currentText.slice(0, this.#revealedChars)
-			renderer.drawText(visibleText, textX, textY, {
+			renderer.drawRichText(this.#currentText, textX, textY, {
 				font: this.options.textFont,
 				color: this.options.textColor,
 				maxWidth: boxW - boxPadding * 2,
 				lineHeight: this.options.textLineHeight
-			})
+			}, this.#revealedChars)
 		}
 
 		// Draw advance indicator
@@ -137,6 +139,7 @@ export class DialogueBox {
 	showDialogue(speaker, text) {
 		this.#currentSpeaker = speaker
 		this.#currentText = text
+		this.#visibleCharCount = Renderer.countVisibleChars(text)
 		this.#revealedChars = 0
 		this.#elapsed = 0
 		this.#state = 'typing'
@@ -160,6 +163,7 @@ export class DialogueBox {
 		this.#state = 'idle'
 		this.#currentSpeaker = null
 		this.#currentText = ''
+		this.#visibleCharCount = 0
 		this.#revealedChars = 0
 		this.#choices = []
 		this.#hoveredChoice = -1
@@ -234,7 +238,7 @@ export class DialogueBox {
 	#onClick(event) {
 		if (this.#state === 'typing') {
 			// Skip typewriter, reveal full text
-			this.#revealedChars = this.#currentText.length
+			this.#revealedChars = this.#visibleCharCount
 			this.#state = 'waiting'
 			return
 		}
@@ -268,7 +272,7 @@ export class DialogueBox {
 	#onKeydown(event) {
 		if (event.key === ' ' || event.key === 'Enter') {
 			if (this.#state === 'typing') {
-				this.#revealedChars = this.#currentText.length
+				this.#revealedChars = this.#visibleCharCount
 				this.#state = 'waiting'
 				event.preventDefault()
 				return

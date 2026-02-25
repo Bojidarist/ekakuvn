@@ -4,6 +4,7 @@ import { AudioEngine } from './audioEngine.js'
 import { DialogueBox } from './dialogueBox.js'
 import { SceneController } from './sceneController.js'
 import { SaveManager } from './saveManager.js'
+import { TransitionManager } from './transitionManager.js'
 
 export class EkakuRuntime {
 	#renderer = null
@@ -12,6 +13,7 @@ export class EkakuRuntime {
 	#dialogueBox = null
 	#sceneController = null
 	#saveManager = null
+	#transitionManager = null
 	#script = null
 	#paused = false
 	#started = false
@@ -65,11 +67,14 @@ export class EkakuRuntime {
 			this.#drawLoadingScreen(progress)
 		})
 
+		this.#transitionManager = new TransitionManager(this.#renderer)
+
 		this.#sceneController = new SceneController({
 			renderer: this.#renderer,
 			assetLoader: this.#assetLoader,
 			audioEngine: this.#audioEngine,
-			dialogueBox: this.#dialogueBox
+			dialogueBox: this.#dialogueBox,
+			transitionManager: this.#transitionManager
 		})
 
 		// Compute script hash for save manager
@@ -83,6 +88,9 @@ export class EkakuRuntime {
 			if (this.#phase === 'playing') {
 				this.#dialogueBox.draw(renderer)
 			}
+		})
+		this.#renderer.setLayer('transition', (renderer) => {
+			this.#transitionManager.draw(renderer)
 		})
 		this.#renderer.setLayer('overlay', (renderer) => {
 			if (this.#phase === 'title') {
@@ -132,7 +140,9 @@ export class EkakuRuntime {
 		this.#renderer.startLoop((dt) => {
 			if (!this.#paused && this.#phase === 'playing') {
 				this.#dialogueBox.update(dt)
+				this.#sceneController.update(dt)
 			}
+			this.#transitionManager.update(dt)
 		})
 
 		// Show title screen (AudioContext will be created on first user click)
@@ -211,6 +221,7 @@ export class EkakuRuntime {
 			this.#titleButtons.push('Load Game')
 		}
 		this.#titleButtons.push('Settings')
+		this.#titleButtons.push('Fullscreen')
 
 		// Set background to title screen
 		const menuConfig = this.#script.meta?.mainMenu
@@ -297,6 +308,8 @@ export class EkakuRuntime {
 			this.#menuState = 'settings'
 			this.#menuVisible = true
 			this.#renderer.canvas.addEventListener('click', this.#menuClickHandler)
+		} else if (label === 'Fullscreen') {
+			this.#toggleFullscreen()
 		}
 	}
 
@@ -376,6 +389,12 @@ export class EkakuRuntime {
 	// ===== In-Game Menu (Escape key) =====
 
 	#onEscape(event) {
+		// Fullscreen toggle on F key
+		if (event.key === 'f' || event.key === 'F') {
+			this.#toggleFullscreen()
+			return
+		}
+
 		if (event.key !== 'Escape') return
 
 		if (this.#phase === 'title') {
@@ -434,7 +453,7 @@ export class EkakuRuntime {
 		const startY = 260
 		const spacing = 56
 
-		const buttons = ['Resume', 'Save Game', 'Load Game', 'Settings', 'Title Screen']
+		const buttons = ['Resume', 'Save Game', 'Load Game', 'Settings', 'Fullscreen', 'Title Screen']
 		for (let i = 0; i < buttons.length; i++) {
 			const bx = centerX - btnW / 2
 			const by = startY + i * spacing
@@ -450,6 +469,8 @@ export class EkakuRuntime {
 				} else if (i === 3) {
 					this.#menuState = 'settings'
 				} else if (i === 4) {
+					this.#toggleFullscreen()
+				} else if (i === 5) {
 					this.#autoSave()
 					this.#renderer.canvas.removeEventListener('click', this.#menuClickHandler)
 					this.#showTitleScreen()
@@ -608,7 +629,7 @@ export class EkakuRuntime {
 			align: 'center'
 		})
 
-		const buttons = ['Resume', 'Save Game', 'Load Game', 'Settings', 'Title Screen']
+		const buttons = ['Resume', 'Save Game', 'Load Game', 'Settings', 'Fullscreen', 'Title Screen']
 		const btnW = 240
 		const btnH = 44
 		const startY = 260
@@ -815,6 +836,20 @@ export class EkakuRuntime {
 			color: '#ffffff',
 			align: 'center'
 		})
+	}
+
+	// ===== Fullscreen =====
+
+	#toggleFullscreen() {
+		const el = this.#renderer.canvas.parentElement ?? this.#renderer.canvas
+		if (document.fullscreenElement) {
+			document.exitFullscreen().catch(() => {})
+		} else {
+			el.requestFullscreen().catch(() => {
+				// Fallback: try on the canvas itself
+				this.#renderer.canvas.requestFullscreen().catch(() => {})
+			})
+		}
 	}
 
 	// ===== Drawing: Loading Screen =====

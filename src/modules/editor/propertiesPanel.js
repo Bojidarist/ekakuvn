@@ -156,6 +156,41 @@ export class PropertiesPanel {
 			})
 		}
 
+		// Transition settings
+		const transitionDivider = document.createElement('hr')
+		transitionDivider.style.cssText = 'border: none; border-top: 1px solid var(--border); margin: 12px 0;'
+		this.#contentEl.appendChild(transitionDivider)
+
+		const transitionHeader = document.createElement('h4')
+		transitionHeader.textContent = 'Transition In'
+		transitionHeader.style.cssText = 'color: var(--accent); margin-bottom: 8px; font-size: 13px;'
+		this.#contentEl.appendChild(transitionHeader)
+
+		const transitionTypes = [
+			{ id: 'fade', name: 'Fade (through black)' },
+			{ id: 'dissolve', name: 'Dissolve (crossfade)' },
+			{ id: 'slideLeft', name: 'Slide left' },
+			{ id: 'slideRight', name: 'Slide right' },
+			{ id: 'slideUp', name: 'Slide up' },
+			{ id: 'slideDown', name: 'Slide down' },
+			{ id: 'none', name: 'None (instant)' }
+		]
+
+		const currentTransition = scene.transition ?? { type: 'fade', duration: 0.5 }
+		this.#addSelect('Type', currentTransition.type, transitionTypes, (val) => {
+			this.#state.updateScene(scene.id, 'transition', {
+				type: val || 'fade',
+				duration: currentTransition.duration ?? 0.5
+			})
+		})
+
+		this.#addGroup('Duration (s)', 'number', currentTransition.duration ?? 0.5, (val) => {
+			this.#state.updateScene(scene.id, 'transition', {
+				type: currentTransition.type ?? 'fade',
+				duration: parseFloat(val) || 0.5
+			})
+		}, { step: '0.1', min: '0.1', max: '3' })
+
 		// Next scene
 		const allScenes = this.#state.scenes.filter(s => s.id !== scene.id)
 		this.#addSelect('Next scene', scene.next ?? '', allScenes.map(s => ({ id: s.id, name: s.id })), (val) => {
@@ -210,6 +245,58 @@ export class PropertiesPanel {
 		this.#addCheckbox('Flip horizontal', char.flipped ?? false, (val) => {
 			this.#state.updateCharacter(scene.id, char.id, { flipped: val })
 		})
+
+		// Enter animation settings
+		const animDivider = document.createElement('hr')
+		animDivider.style.cssText = 'border: none; border-top: 1px solid var(--border); margin: 12px 0;'
+		this.#contentEl.appendChild(animDivider)
+
+		const animHeader = document.createElement('h4')
+		animHeader.textContent = 'Enter Animation'
+		animHeader.style.cssText = 'color: var(--accent); margin-bottom: 8px; font-size: 13px;'
+		this.#contentEl.appendChild(animHeader)
+
+		const animTypes = [
+			{ id: 'none', name: 'None (instant)' },
+			{ id: 'fadeIn', name: 'Fade in' },
+			{ id: 'slideLeft', name: 'Slide from left' },
+			{ id: 'slideRight', name: 'Slide from right' },
+			{ id: 'slideUp', name: 'Slide from below' },
+			{ id: 'slideDown', name: 'Slide from above' },
+			{ id: 'slideLeftFade', name: 'Slide left + fade' },
+			{ id: 'slideRightFade', name: 'Slide right + fade' }
+		]
+
+		const currentAnim = char.enterAnimation ?? { type: 'none', duration: 0.4 }
+		this.#addSelect('Type', currentAnim.type, animTypes, (val) => {
+			this.#state.updateCharacter(scene.id, char.id, {
+				enterAnimation: {
+					type: val || 'none',
+					duration: currentAnim.duration ?? 0.4,
+					delay: currentAnim.delay ?? 0
+				}
+			})
+		})
+
+		if (currentAnim.type !== 'none') {
+			this.#addGroup('Duration (s)', 'number', currentAnim.duration ?? 0.4, (val) => {
+				this.#state.updateCharacter(scene.id, char.id, {
+					enterAnimation: {
+						...currentAnim,
+						duration: parseFloat(val) || 0.4
+					}
+				})
+			}, { step: '0.05', min: '0.1', max: '3' })
+
+			this.#addGroup('Delay (s)', 'number', currentAnim.delay ?? 0, (val) => {
+				this.#state.updateCharacter(scene.id, char.id, {
+					enterAnimation: {
+						...currentAnim,
+						delay: parseFloat(val) || 0
+					}
+				})
+			}, { step: '0.05', min: '0', max: '5' })
+		}
 
 		// Delete button
 		const delBtn = document.createElement('button')

@@ -1,3 +1,5 @@
+import { CharacterAnimator } from './characterAnimator.js'
+
 export class SceneController {
 	#script = null
 	#sceneMap = new Map()
@@ -7,15 +9,19 @@ export class SceneController {
 	#assetLoader = null
 	#audioEngine = null
 	#dialogueBox = null
+	#transitionManager = null
+	#characterAnimator = null
 	#running = false
 	#onSceneChange = null
 	#onEnd = null
 
-	constructor({ renderer, assetLoader, audioEngine, dialogueBox }) {
+	constructor({ renderer, assetLoader, audioEngine, dialogueBox, transitionManager }) {
 		this.#renderer = renderer
 		this.#assetLoader = assetLoader
 		this.#audioEngine = audioEngine
 		this.#dialogueBox = dialogueBox
+		this.#transitionManager = transitionManager ?? null
+		this.#characterAnimator = new CharacterAnimator()
 	}
 
 	get currentSceneId() {
@@ -36,6 +42,14 @@ export class SceneController {
 
 	set onEnd(fn) {
 		this.#onEnd = fn
+	}
+
+	/**
+	 * Update per-frame animations (character enter/exit).
+	 * @param {number} dt - Delta time in seconds
+	 */
+	update(dt) {
+		this.#characterAnimator.update(dt)
 	}
 
 	loadScript(script) {
@@ -76,6 +90,13 @@ export class SceneController {
 			return
 		}
 
+		// Capture snapshot for transition (before changing the scene)
+		const hasTransition = this.#transitionManager && this.#currentScene
+		if (hasTransition) {
+			this.#renderer.renderLayers()
+			this.#transitionManager.captureSnapshot()
+		}
+
 		this.#currentScene = scene
 		this.#dialogueIndex = startDialogueIndex
 
@@ -91,6 +112,12 @@ export class SceneController {
 		// Notify scene change
 		if (this.#onSceneChange) {
 			this.#onSceneChange(scene.id)
+		}
+
+		// Play scene transition if configured
+		if (hasTransition) {
+			const transition = scene.transition ?? { type: 'fade', duration: 0.5 }
+			await this.#transitionManager.start(transition.type, transition.duration)
 		}
 
 		// Start dialogue playback
@@ -118,6 +145,9 @@ export class SceneController {
 	}
 
 	#setupCharacters(scene) {
+		// Trigger enter animations for characters
+		this.#characterAnimator.animateEnter(scene.characters ?? [])
+
 		this.#renderer.setLayer('characters', (renderer) => {
 			if (!scene.characters || scene.characters.length === 0) return
 
@@ -130,14 +160,19 @@ export class SceneController {
 				const drawW = img.naturalWidth * scale
 				const drawH = img.naturalHeight * scale
 
+				// Get animated transform (if any animation is active)
+				const anim = this.#characterAnimator.getTransform(charData)
+				const offsetX = anim ? anim.offsetX * renderer.width : 0
+				const offsetY = anim ? anim.offsetY * renderer.height : 0
+				const alpha = anim ? anim.alpha : 1
+
 				// Position is normalized 0-1, convert to canvas coordinates
-				// x: 0 = left edge, 1 = right edge (character centered on x)
-				// y: 0 = top, 1 = bottom (character bottom-aligned to y)
-				const drawX = charData.position.x * renderer.width - drawW / 2
-				const drawY = charData.position.y * renderer.height - drawH
+				const drawX = charData.position.x * renderer.width - drawW / 2 + offsetX
+				const drawY = charData.position.y * renderer.height - drawH + offsetY
 
 				const ctx = renderer.context
 				ctx.save()
+				ctx.globalAlpha = alpha
 
 				if (charData.flipped) {
 					ctx.translate(drawX + drawW, drawY)

@@ -55,16 +55,52 @@ document.getElementById('btn-save').addEventListener('click', (e) => {
 })
 
 document.getElementById('btn-preview').addEventListener('click', () => {
-	// Export script to a data URL and open the runtime player in a new tab
+	openPlayPreview()
+})
+
+// --- Play Preview (embedded iframe) ---
+
+const previewOverlay = document.getElementById('play-preview')
+const previewCloseBtn = document.getElementById('btn-preview-close')
+let previewBlobUrl = null
+let previewIframe = null
+
+function openPlayPreview() {
 	const script = state.toScript()
 	const json = JSON.stringify(script)
 	const blob = new Blob([json], { type: 'application/json' })
-	const url = URL.createObjectURL(blob)
+	previewBlobUrl = URL.createObjectURL(blob)
 
-	// Open runtime index.html with the script URL as a query parameter
-	const previewUrl = '../index.html?script=' + encodeURIComponent(url)
-	window.open(previewUrl, '_blank')
-})
+	// Create iframe pointing to the runtime page with the script URL
+	previewIframe = document.createElement('iframe')
+	previewIframe.className = 'play-preview-frame'
+	previewIframe.src = '../index.html?script=' + encodeURIComponent(previewBlobUrl)
+	previewIframe.allow = 'autoplay'
+	previewOverlay.appendChild(previewIframe)
+
+	previewOverlay.classList.remove('hidden')
+}
+
+function closePlayPreview() {
+	if (previewOverlay.classList.contains('hidden')) return
+
+	previewOverlay.classList.add('hidden')
+
+	// Remove iframe to stop all audio/video and free resources
+	if (previewIframe) {
+		previewIframe.src = 'about:blank'
+		previewIframe.remove()
+		previewIframe = null
+	}
+
+	// Revoke blob URL to free memory
+	if (previewBlobUrl) {
+		URL.revokeObjectURL(previewBlobUrl)
+		previewBlobUrl = null
+	}
+}
+
+previewCloseBtn.addEventListener('click', closePlayPreview)
 
 // --- Textbox preview toggle ---
 
@@ -101,12 +137,37 @@ document.addEventListener('keydown', (e) => {
 	} else if (ctrl && e.key === 'y') {
 		e.preventDefault()
 		state.redo()
-	} else if (ctrl && e.key === 's') {
+	} else if (ctrl && e.key === 's' && !e.shiftKey) {
 		e.preventDefault()
 		serializer.exportToFile()
+	} else if (ctrl && e.key === 'S' && e.shiftKey) {
+		e.preventDefault()
+		serializer.exportProjectToFile()
 	} else if (ctrl && e.key === 'o') {
 		e.preventDefault()
 		serializer.openImportDialog()
+	} else if (ctrl && e.key === 'n') {
+		e.preventDefault()
+		if (confirm('Start a new project? Unsaved changes will be lost.')) {
+			state.newProject()
+			const scene = state.addScene('scene-intro')
+			state.selectScene(scene.id)
+		}
+	} else if (ctrl && e.key === 'd') {
+		e.preventDefault()
+		const scene = state.currentScene
+		if (scene) {
+			const copy = state.duplicateScene(scene.id)
+			if (copy) state.selectScene(copy.id)
+		}
+	} else if (e.key === 'Escape') {
+		e.preventDefault()
+		// Close preview overlay if open, otherwise deselect
+		if (!previewOverlay.classList.contains('hidden')) {
+			closePlayPreview()
+		} else {
+			state.selectElement(null)
+		}
 	} else if (e.key === 'Delete' || e.key === 'Backspace') {
 		// Delete selected character
 		const selectedId = state.selectedElementId

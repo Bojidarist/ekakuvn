@@ -20,6 +20,13 @@ export class ScriptSerializer {
 	}
 
 	async exportToFile() {
+		// Validate before export
+		const warnings = this.#validate()
+		if (warnings.length > 0) {
+			const msg = 'Export warnings:\n\n' + warnings.join('\n') + '\n\nExport anyway?'
+			if (!confirm(msg)) return
+		}
+
 		const script = this.#state.toScript()
 		const json = JSON.stringify(script, null, '\t')
 		const title = this.#state.project.meta.title ?? 'untitled'
@@ -35,6 +42,126 @@ export class ScriptSerializer {
 		const filename = this.#slugify(title) + '.ekaku-project.evn'
 		const compressed = await this.#gzipCompress(json)
 		this.#downloadBlob(filename, new Blob([compressed], { type: 'application/gzip' }))
+	}
+
+	// --- Validation ---
+
+	#validate() {
+		const warnings = []
+		const project = this.#state.project
+		const assetIds = new Set(project.assets.map(a => a.id))
+		const sceneIds = new Set(project.scenes.map(s => s.id))
+
+		// Check for empty project
+		if (project.scenes.length === 0) {
+			warnings.push('\u2022 No scenes defined')
+			return warnings
+		}
+
+		// Check start scene
+		if (!project.startScene) {
+			warnings.push('\u2022 No start scene set')
+		} else if (!sceneIds.has(project.startScene)) {
+			warnings.push(`\u2022 Start scene "${project.startScene}" does not exist`)
+		}
+
+		// Check each scene for missing references
+		for (const scene of project.scenes) {
+			// Background references a missing asset
+			if (scene.background && !assetIds.has(scene.background)) {
+				warnings.push(`\u2022 Scene "${scene.id}": background references missing asset "${scene.background}"`)
+			}
+
+			// Music references a missing asset
+			if (scene.music?.assetId && !assetIds.has(scene.music.assetId)) {
+				warnings.push(`\u2022 Scene "${scene.id}": music references missing asset "${scene.music.assetId}"`)
+			}
+
+			// Character references missing assets
+			for (const char of scene.characters ?? []) {
+				if (char.assetId && !assetIds.has(char.assetId)) {
+					warnings.push(`\u2022 Scene "${scene.id}": character references missing asset "${char.assetId}"`)
+				}
+			}
+
+			// Next scene references a missing scene
+			if (scene.next && !sceneIds.has(scene.next)) {
+				warnings.push(`\u2022 Scene "${scene.id}": next scene "${scene.next}" does not exist`)
+			}
+
+			// Choice targets reference missing scenes
+			if (scene.choices) {
+				for (const choice of scene.choices) {
+					if (choice.targetSceneId && !sceneIds.has(choice.targetSceneId)) {
+						warnings.push(`\u2022 Scene "${scene.id}": choice "${choice.text}" targets missing scene "${choice.targetSceneId}"`)
+					}
+					if (!choice.targetSceneId) {
+						warnings.push(`\u2022 Scene "${scene.id}": choice "${choice.text}" has no target scene`)
+					}
+				}
+			}
+
+			// Scene has no dialogue and no choices (empty scene)
+			if ((!scene.dialogue || scene.dialogue.length === 0) && !scene.choices) {
+				warnings.push(`\u2022 Scene "${scene.id}": has no dialogue and no choices`)
+			}
+
+			// Dead end: no next scene and no choices
+			if (!scene.next && !scene.choices) {
+				warnings.push(`\u2022 Scene "${scene.id}": dead end (no next scene or choices)`)
+			}
+		}
+
+		// Find orphan scenes (not reachable from start scene)
+		if (project.startScene && sceneIds.has(project.startScene)) {
+			const reachable = new Set()
+			const queue = [project.startScene]
+			while (queue.length > 0) {
+				const id = queue.shift()
+				if (reachable.has(id)) continue
+				reachable.add(id)
+
+				const scene = project.scenes.find(s => s.id === id)
+				if (!scene) continue
+
+				if (scene.next && !reachable.has(scene.next)) {
+					queue.push(scene.next)
+				}
+				if (scene.choices) {
+					for (const choice of scene.choices) {
+						if (choice.targetSceneId && !reachable.has(choice.targetSceneId)) {
+							queue.push(choice.targetSceneId)
+						}
+					}
+				}
+			}
+
+			for (const scene of project.scenes) {
+				if (!reachable.has(scene.id)) {
+					warnings.push(`\u2022 Scene "${scene.id}": orphan (not reachable from start scene)`)
+				}
+			}
+		}
+
+		// Check for unused assets
+		const usedAssets = new Set()
+		for (const scene of project.scenes) {
+			if (scene.background) usedAssets.add(scene.background)
+			if (scene.music?.assetId) usedAssets.add(scene.music.assetId)
+			for (const char of scene.characters ?? []) {
+				if (char.assetId) usedAssets.add(char.assetId)
+			}
+		}
+		if (project.meta?.mainMenu?.background) {
+			usedAssets.add(project.meta.mainMenu.background)
+		}
+		for (const asset of project.assets) {
+			if (!usedAssets.has(asset.id)) {
+				warnings.push(`\u2022 Asset "${asset.name ?? asset.id}" is unused`)
+			}
+		}
+
+		return warnings
 	}
 
 	// --- Import ---
@@ -102,7 +229,8 @@ export class ScriptSerializer {
 				assetId: c.assetId,
 				position: c.position ?? { x: 0.5, y: 0.5 },
 				scale: c.scale ?? 1.0,
-				flipped: c.flipped ?? false
+				flipped: c.flipped ?? false,
+				enterAnimation: c.enterAnimation ?? { type: 'none', duration: 0.4 }
 			}))
 
 			// Normalize optional fields
@@ -111,6 +239,7 @@ export class ScriptSerializer {
 			scene.next = scene.next ?? null
 			scene.background = scene.background ?? null
 			scene.music = scene.music ?? null
+			scene.transition = scene.transition ?? { type: 'fade', duration: 0.5 }
 		}
 
 		this.#state.loadProject(project)

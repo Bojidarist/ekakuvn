@@ -120,7 +120,8 @@ export class EditorState {
 			characters: [],
 			dialogue: [],
 			choices: null,
-			next: null
+			next: null,
+			transition: { type: 'fade', duration: 0.5 }
 		}
 		this.#project.scenes.push(scene)
 
@@ -209,7 +210,8 @@ export class EditorState {
 			assetId: charData.assetId,
 			position: charData.position ?? { x: 0.5, y: 0.5 },
 			scale: charData.scale ?? 1.0,
-			flipped: charData.flipped ?? false
+			flipped: charData.flipped ?? false,
+			enterAnimation: charData.enterAnimation ?? { type: 'none', duration: 0.4 }
 		}
 		scene.characters.push(character)
 		this.#autoSave()
@@ -539,12 +541,19 @@ export class EditorState {
 
 		// Remove character editor IDs (runtime doesn't need them)
 		for (const scene of script.scenes) {
-			scene.characters = scene.characters.map(c => ({
-				assetId: c.assetId,
-				position: c.position,
-				scale: c.scale,
-				flipped: c.flipped
-			}))
+			scene.characters = scene.characters.map(c => {
+				const exported = {
+					assetId: c.assetId,
+					position: c.position,
+					scale: c.scale,
+					flipped: c.flipped
+				}
+				// Only include enterAnimation if it's not 'none'
+				if (c.enterAnimation && c.enterAnimation.type !== 'none') {
+					exported.enterAnimation = c.enterAnimation
+				}
+				return exported
+			})
 		}
 
 		// Clean up mainMenu -- only include if it has non-null values
