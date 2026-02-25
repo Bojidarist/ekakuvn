@@ -109,10 +109,18 @@ export class DialogueEditor {
 		speakerEl.className = 'entry-speaker'
 		speakerEl.textContent = entry.speaker || '(narrator)'
 
-		// Text
+		// Text (with expression badge if set)
 		const textEl = document.createElement('span')
 		textEl.className = 'entry-text'
-		textEl.textContent = entry.text || '(empty)'
+		if (entry.expression) {
+			const badge = document.createElement('span')
+			badge.textContent = entry.expression
+			badge.style.cssText = 'display: inline-block; background: var(--accent); color: var(--bg-dark); font-size: 10px; padding: 1px 5px; border-radius: 3px; margin-right: 6px; font-weight: 500; vertical-align: middle;'
+			textEl.appendChild(badge)
+			textEl.appendChild(document.createTextNode(entry.text || '(empty)'))
+		} else {
+			textEl.textContent = entry.text || '(empty)'
+		}
 		if (!entry.text) textEl.style.color = 'var(--text-secondary)'
 
 		// Actions
@@ -161,7 +169,8 @@ export class DialogueEditor {
 			this.#selectedDialogueIndex = index
 			this.#emitPreview({
 				speaker: entry.speaker || null,
-				text: entry.text || ''
+				text: entry.text || '',
+				expression: entry.expression || null
 			})
 			this.render()
 		})
@@ -242,6 +251,39 @@ export class DialogueEditor {
 		textRow.appendChild(textLabel)
 		textRow.appendChild(textInput)
 
+		// Expression row
+		const availableExpressions = this.#state.getSceneExpressions(scene.id)
+		let exprRow = null
+		let exprSelect = null
+
+		if (availableExpressions.length > 0) {
+			exprRow = document.createElement('div')
+			exprRow.style.cssText = 'display: flex; gap: 8px; align-items: center;'
+
+			const exprLabel = document.createElement('label')
+			exprLabel.textContent = 'Expression'
+			exprLabel.style.cssText = 'font-size: 11px; color: var(--text-secondary); min-width: 52px;'
+
+			exprSelect = document.createElement('select')
+			exprSelect.style.cssText = 'flex: 1; padding: 4px 8px; border: 1px solid var(--border-color); border-radius: var(--radius); background: var(--bg-dark); color: var(--text-primary); font-size: 13px; outline: none;'
+
+			const noneOpt = document.createElement('option')
+			noneOpt.value = ''
+			noneOpt.textContent = '(default)'
+			exprSelect.appendChild(noneOpt)
+
+			for (const name of availableExpressions) {
+				const opt = document.createElement('option')
+				opt.value = name
+				opt.textContent = name
+				if (name === entry.expression) opt.selected = true
+				exprSelect.appendChild(opt)
+			}
+
+			exprRow.appendChild(exprLabel)
+			exprRow.appendChild(exprSelect)
+		}
+
 		// Button row
 		const btnRow = document.createElement('div')
 		btnRow.style.cssText = 'display: flex; gap: 6px; justify-content: flex-end;'
@@ -252,12 +294,14 @@ export class DialogueEditor {
 		saveBtn.addEventListener('click', () => {
 			this.#state.updateDialogue(scene.id, index, {
 				speaker: speakerInput.value || null,
-				text: textInput.value
+				text: textInput.value,
+				expression: exprSelect ? (exprSelect.value || null) : entry.expression
 			})
 			this.#selectedDialogueIndex = index
 			this.#emitPreview({
 				speaker: speakerInput.value || null,
-				text: textInput.value
+				text: textInput.value,
+				expression: exprSelect ? (exprSelect.value || null) : entry.expression
 			})
 			this.#editingIndex = null
 			this.#editingType = null
@@ -278,6 +322,7 @@ export class DialogueEditor {
 
 		form.appendChild(speakerRow)
 		form.appendChild(textRow)
+		if (exprRow) form.appendChild(exprRow)
 		form.appendChild(btnRow)
 
 		this.#listEl.appendChild(form)

@@ -75,9 +75,14 @@ export class EditorCanvas {
 			this.#ensureImage(scene.background)
 		}
 
-		// Preload characters
+		// Preload characters and their expressions
 		for (const char of scene.characters) {
 			this.#ensureImage(char.assetId)
+			if (char.expressions) {
+				for (const exprAssetId of Object.values(char.expressions)) {
+					this.#ensureImage(exprAssetId)
+				}
+			}
 		}
 	}
 
@@ -127,8 +132,26 @@ export class EditorCanvas {
 		const scene = this.#state.currentScene
 		if (!scene) return
 
+		// Determine active expression from dialogue preview
+		const preview = this.#dialoguePreview
+		const activeExpression = preview?.expression ?? null
+		const activeSpeaker = preview?.speaker ?? null
+
 		for (const char of scene.characters) {
-			const img = this.#getImage(char.assetId)
+			// Resolve which image to display: expression override or default
+			let displayAssetId = char.assetId
+			if (activeExpression && char.expressions && char.expressions[activeExpression]) {
+				// If the dialogue line's speaker matches one of the character asset names,
+				// or if there's only one character, apply the expression
+				const asset = this.#state.assets.find(a => a.id === char.assetId)
+				const charName = asset ? (asset.name ?? asset.id) : char.assetId
+				if (scene.characters.length === 1 ||
+					(activeSpeaker && charName.toLowerCase() === activeSpeaker.toLowerCase())) {
+					displayAssetId = char.expressions[activeExpression]
+				}
+			}
+
+			const img = this.#getImage(displayAssetId)
 			if (!img) continue
 
 			const scale = char.scale ?? 1.0

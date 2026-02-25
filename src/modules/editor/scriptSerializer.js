@@ -82,6 +82,14 @@ export class ScriptSerializer {
 				if (char.assetId && !assetIds.has(char.assetId)) {
 					warnings.push(`\u2022 Scene "${scene.id}": character references missing asset "${char.assetId}"`)
 				}
+				// Validate expression asset references
+				if (char.expressions) {
+					for (const [exprName, exprAssetId] of Object.entries(char.expressions)) {
+						if (exprAssetId && !assetIds.has(exprAssetId)) {
+							warnings.push(`\u2022 Scene "${scene.id}": expression "${exprName}" references missing asset "${exprAssetId}"`)
+						}
+					}
+				}
 			}
 
 			// Next scene references a missing scene
@@ -150,6 +158,12 @@ export class ScriptSerializer {
 			if (scene.music?.assetId) usedAssets.add(scene.music.assetId)
 			for (const char of scene.characters ?? []) {
 				if (char.assetId) usedAssets.add(char.assetId)
+				// Track expression assets as used
+				if (char.expressions) {
+					for (const exprAssetId of Object.values(char.expressions)) {
+						if (exprAssetId) usedAssets.add(exprAssetId)
+					}
+				}
 			}
 		}
 		if (project.meta?.mainMenu?.background) {
@@ -230,7 +244,8 @@ export class ScriptSerializer {
 				position: c.position ?? { x: 0.5, y: 0.5 },
 				scale: c.scale ?? 1.0,
 				flipped: c.flipped ?? false,
-				enterAnimation: c.enterAnimation ?? { type: 'none', duration: 0.4 }
+				enterAnimation: c.enterAnimation ?? { type: 'none', duration: 0.4 },
+				expressions: c.expressions ?? {}
 			}))
 
 			// Normalize optional fields

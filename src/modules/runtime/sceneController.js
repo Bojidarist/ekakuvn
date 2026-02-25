@@ -11,6 +11,7 @@ export class SceneController {
 	#dialogueBox = null
 	#transitionManager = null
 	#characterAnimator = null
+	#activeExpressions = new Map() // charIndex -> assetId override
 	#running = false
 	#onSceneChange = null
 	#onEnd = null
@@ -145,14 +146,21 @@ export class SceneController {
 	}
 
 	#setupCharacters(scene) {
+		// Reset active expressions for new scene
+		this.#activeExpressions.clear()
+
 		// Trigger enter animations for characters
 		this.#characterAnimator.animateEnter(scene.characters ?? [])
 
 		this.#renderer.setLayer('characters', (renderer) => {
 			if (!scene.characters || scene.characters.length === 0) return
 
-			for (const charData of scene.characters) {
-				const charAsset = this.#assetLoader.getAsset(charData.assetId)
+			for (let i = 0; i < scene.characters.length; i++) {
+				const charData = scene.characters[i]
+
+				// Use expression override if set, otherwise default assetId
+				const displayAssetId = this.#activeExpressions.get(i) ?? charData.assetId
+				const charAsset = this.#assetLoader.getAsset(displayAssetId)
 				if (!charAsset || !charAsset.resource) continue
 
 				const img = charAsset.resource
@@ -217,6 +225,11 @@ export class SceneController {
 			this.#dialogueIndex = i
 			const entry = scene.dialogue[i]
 
+			// Apply expression change if specified
+			if (entry.expression && scene.characters) {
+				this.#applyExpression(scene, entry.speaker, entry.expression)
+			}
+
 			// Show dialogue and wait for player to advance
 			await this.#dialogueBox.showDialogue(entry.speaker, entry.text)
 		}
@@ -224,6 +237,27 @@ export class SceneController {
 		// Dialogue finished, handle choices or next scene
 		this.#dialogueIndex = scene.dialogue.length
 		await this.#handleSceneEnd()
+	}
+
+	#applyExpression(scene, speaker, expression) {
+		if (!scene.characters) return
+
+		for (let i = 0; i < scene.characters.length; i++) {
+			const charData = scene.characters[i]
+			if (!charData.expressions) continue
+
+			// Match by speaker name: compare against the asset name/id
+			const charAsset = this.#assetLoader.getAsset(charData.assetId)
+			const charName = charAsset ? (charAsset.id ?? '') : ''
+
+			// Match if: speaker matches asset name, or there's only one character in scene
+			const isMatch = scene.characters.length === 1 ||
+				(speaker && charName.toLowerCase() === speaker.toLowerCase())
+
+			if (isMatch && charData.expressions[expression]) {
+				this.#activeExpressions.set(i, charData.expressions[expression])
+			}
+		}
 	}
 
 	async #handleSceneEnd() {

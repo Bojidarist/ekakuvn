@@ -298,6 +298,95 @@ export class PropertiesPanel {
 			}, { step: '0.05', min: '0', max: '5' })
 		}
 
+		// Expressions section
+		const exprDivider = document.createElement('hr')
+		exprDivider.style.cssText = 'border: none; border-top: 1px solid var(--border); margin: 12px 0;'
+		this.#contentEl.appendChild(exprDivider)
+
+		const exprHeader = document.createElement('h4')
+		exprHeader.textContent = 'Expressions'
+		exprHeader.style.cssText = 'color: var(--accent); margin-bottom: 8px; font-size: 13px;'
+		this.#contentEl.appendChild(exprHeader)
+
+		const exprHint = document.createElement('div')
+		exprHint.textContent = 'Map expression names to character image assets. Use these in dialogue lines to swap the displayed sprite.'
+		exprHint.style.cssText = 'font-size: 11px; color: var(--text-secondary); margin-bottom: 8px; line-height: 1.4;'
+		this.#contentEl.appendChild(exprHint)
+
+		// List existing expressions
+		const expressions = char.expressions ?? {}
+		const charAssets = this.#state.getAssetsByType('character')
+
+		for (const [name, exprAssetId] of Object.entries(expressions)) {
+			const exprRow = document.createElement('div')
+			exprRow.style.cssText = 'display: flex; gap: 6px; align-items: center; margin-bottom: 6px;'
+
+			const nameSpan = document.createElement('span')
+			nameSpan.textContent = name
+			nameSpan.style.cssText = 'font-size: 12px; color: var(--text-primary); min-width: 60px; font-weight: 500;'
+
+			const exprAsset = charAssets.find(a => a.id === exprAssetId)
+			const assetSpan = document.createElement('span')
+			assetSpan.textContent = exprAsset ? (exprAsset.name ?? exprAsset.id) : '(missing)'
+			assetSpan.style.cssText = 'flex: 1; font-size: 12px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;'
+			if (!exprAsset) assetSpan.style.color = 'var(--danger)'
+
+			const removeBtn = document.createElement('button')
+			removeBtn.textContent = '\u2715'
+			removeBtn.title = 'Remove expression'
+			removeBtn.style.cssText = 'padding: 2px 6px; font-size: 10px; border: none; background: transparent; color: var(--text-secondary); cursor: pointer;'
+			removeBtn.addEventListener('mouseenter', () => { removeBtn.style.color = 'var(--danger)' })
+			removeBtn.addEventListener('mouseleave', () => { removeBtn.style.color = 'var(--text-secondary)' })
+			removeBtn.addEventListener('click', () => {
+				this.#state.removeCharacterExpression(scene.id, char.id, name)
+			})
+
+			exprRow.appendChild(nameSpan)
+			exprRow.appendChild(assetSpan)
+			exprRow.appendChild(removeBtn)
+			this.#contentEl.appendChild(exprRow)
+		}
+
+		// Add new expression form
+		const addRow = document.createElement('div')
+		addRow.style.cssText = 'display: flex; gap: 6px; align-items: center; margin-top: 4px;'
+
+		const nameInput = document.createElement('input')
+		nameInput.type = 'text'
+		nameInput.placeholder = 'Name (e.g. happy)'
+		nameInput.style.cssText = 'width: 90px; padding: 3px 6px; font-size: 12px; border: 1px solid var(--border-color); border-radius: var(--radius); background: var(--bg-dark); color: var(--text-primary); outline: none;'
+
+		const assetSelect = document.createElement('select')
+		assetSelect.style.cssText = 'flex: 1; padding: 3px 6px; font-size: 12px; border: 1px solid var(--border-color); border-radius: var(--radius); background: var(--bg-dark); color: var(--text-primary); outline: none;'
+
+		const exprEmptyOpt = document.createElement('option')
+		exprEmptyOpt.value = ''
+		exprEmptyOpt.textContent = '(select asset)'
+		assetSelect.appendChild(exprEmptyOpt)
+
+		for (const a of charAssets) {
+			const opt = document.createElement('option')
+			opt.value = a.id
+			opt.textContent = a.name ?? a.id
+			assetSelect.appendChild(opt)
+		}
+
+		const addExprBtn = document.createElement('button')
+		addExprBtn.textContent = '+'
+		addExprBtn.title = 'Add expression'
+		addExprBtn.style.cssText = 'padding: 3px 8px; font-size: 12px;'
+		addExprBtn.addEventListener('click', () => {
+			const exprName = nameInput.value.trim().toLowerCase()
+			const exprAssetVal = assetSelect.value
+			if (!exprName || !exprAssetVal) return
+			this.#state.addCharacterExpression(scene.id, char.id, exprName, exprAssetVal)
+		})
+
+		addRow.appendChild(nameInput)
+		addRow.appendChild(assetSelect)
+		addRow.appendChild(addExprBtn)
+		this.#contentEl.appendChild(addRow)
+
 		// Delete button
 		const delBtn = document.createElement('button')
 		delBtn.textContent = 'Remove character'

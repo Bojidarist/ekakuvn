@@ -211,7 +211,8 @@ export class EditorState {
 			position: charData.position ?? { x: 0.5, y: 0.5 },
 			scale: charData.scale ?? 1.0,
 			flipped: charData.flipped ?? false,
-			enterAnimation: charData.enterAnimation ?? { type: 'none', duration: 0.4 }
+			enterAnimation: charData.enterAnimation ?? { type: 'none', duration: 0.4 },
+			expressions: charData.expressions ?? {}
 		}
 		scene.characters.push(character)
 		this.#autoSave()
@@ -303,6 +304,57 @@ export class EditorState {
 
 	// --- Choices ---
 
+	getSceneExpressions(sceneId) {
+		const scene = this.#project.scenes.find(s => s.id === sceneId)
+		if (!scene) return []
+
+		const expressions = new Set()
+		for (const char of scene.characters) {
+			if (char.expressions) {
+				for (const name of Object.keys(char.expressions)) {
+					expressions.add(name)
+				}
+			}
+		}
+		return [...expressions].sort()
+	}
+
+	getCharacterExpressions(sceneId, characterId) {
+		const scene = this.#project.scenes.find(s => s.id === sceneId)
+		if (!scene) return []
+
+		const char = scene.characters.find(c => c.id === characterId)
+		if (!char || !char.expressions) return []
+		return Object.keys(char.expressions).sort()
+	}
+
+	addCharacterExpression(sceneId, characterId, name, assetId) {
+		const scene = this.#project.scenes.find(s => s.id === sceneId)
+		if (!scene) return
+
+		const char = scene.characters.find(c => c.id === characterId)
+		if (!char) return
+
+		this.#pushUndo()
+		if (!char.expressions) char.expressions = {}
+		char.expressions[name] = assetId
+		this.#autoSave()
+		this.#emit('sceneUpdated', { sceneId, key: 'characters' })
+	}
+
+	removeCharacterExpression(sceneId, characterId, name) {
+		const scene = this.#project.scenes.find(s => s.id === sceneId)
+		if (!scene) return
+
+		const char = scene.characters.find(c => c.id === characterId)
+		if (!char || !char.expressions) return
+
+		this.#pushUndo()
+		delete char.expressions[name]
+		this.#autoSave()
+		this.#emit('sceneUpdated', { sceneId, key: 'characters' })
+	}
+
 	addChoice(sceneId, choice) {
 		const scene = this.#project.scenes.find(s => s.id === sceneId)
 		if (!scene) return
@@ -366,6 +418,17 @@ export class EditorState {
 			if (scene.background === assetId) scene.background = null
 			if (scene.music?.assetId === assetId) scene.music = null
 			scene.characters = scene.characters.filter(c => c.assetId !== assetId)
+
+			// Clean up expression references to deleted asset
+			for (const char of scene.characters) {
+				if (char.expressions) {
+					for (const [name, exprAssetId] of Object.entries(char.expressions)) {
+						if (exprAssetId === assetId) {
+							delete char.expressions[name]
+						}
+					}
+				}
+			}
 		}
 
 		this.#autoSave()
@@ -551,6 +614,10 @@ export class EditorState {
 				// Only include enterAnimation if it's not 'none'
 				if (c.enterAnimation && c.enterAnimation.type !== 'none') {
 					exported.enterAnimation = c.enterAnimation
+				}
+				// Only include expressions if non-empty
+				if (c.expressions && Object.keys(c.expressions).length > 0) {
+					exported.expressions = c.expressions
 				}
 				return exported
 			})
