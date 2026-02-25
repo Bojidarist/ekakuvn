@@ -30,10 +30,17 @@ export class EkakuRuntime {
 	#menuState = 'main' // main | saves | settings | confirmOverwrite
 	#menuSelectedSlot = null
 
+	// Slider drag state
+	#draggingSlider = null // { index, volumeEntry } when dragging a settings slider
+	#boundMenuMousedown = null
+	#boundMenuMousemove = null
+	#boundMenuMouseup = null
+
 	// Event handlers
 	#boundEscapeHandler = null
 	#boundVisibilityHandler = null
 	#boundBeforeUnloadHandler = null
+	#boundFullscreenHandler = null
 	#boundTitleClickHandler = null
 	#boundTitleMoveHandler = null
 
@@ -99,10 +106,10 @@ export class EkakuRuntime {
 			this.#transitionManager.draw(renderer)
 		})
 		this.#renderer.setLayer('overlay', (renderer) => {
-			if (this.#phase === 'title') {
-				this.#drawTitleScreen(renderer)
-			} else if (this.#menuVisible) {
+			if (this.#menuVisible) {
 				this.#drawMenu(renderer)
+			} else if (this.#phase === 'title') {
+				this.#drawTitleScreen(renderer)
 			}
 		})
 
@@ -133,6 +140,10 @@ export class EkakuRuntime {
 			if (this.#started) this.#autoSave()
 		}
 		window.addEventListener('beforeunload', this.#boundBeforeUnloadHandler)
+
+		// Fullscreen change: update canvas scaling
+		this.#boundFullscreenHandler = this.#onFullscreenChange.bind(this)
+		document.addEventListener('fullscreenchange', this.#boundFullscreenHandler)
 	}
 
 	async start() {
@@ -199,8 +210,10 @@ export class EkakuRuntime {
 		this.#dialogueBox.dispose()
 		this.#audioEngine.dispose()
 		this.#removeTitleListeners()
+		this.#removeMenuListeners()
 		document.removeEventListener('keydown', this.#boundEscapeHandler)
 		document.removeEventListener('visibilitychange', this.#boundVisibilityHandler)
+		document.removeEventListener('fullscreenchange', this.#boundFullscreenHandler)
 		window.removeEventListener('beforeunload', this.#boundBeforeUnloadHandler)
 	}
 
@@ -215,6 +228,7 @@ export class EkakuRuntime {
 		this.#phase = 'title'
 		this.#started = false
 		this.#paused = true
+		this.#dialogueBox.paused = true
 		this.#menuVisible = false
 		this.#titleHovered = -1
 
@@ -227,7 +241,6 @@ export class EkakuRuntime {
 			this.#titleButtons.push('Load Game')
 		}
 		this.#titleButtons.push('Settings')
-		this.#titleButtons.push('Fullscreen')
 
 		// Set background to title screen
 		const menuConfig = this.#script.meta?.mainMenu
@@ -309,15 +322,13 @@ export class EkakuRuntime {
 			this.#menuState = 'saves'
 			this.#menuSelectedSlot = 'load'
 			this.#menuVisible = true
-			this.#renderer.canvas.addEventListener('click', this.#menuClickHandler)
+			this.#addMenuListeners()
 		} else if (label === 'Settings') {
 			this.#removeTitleListeners()
 			this.#phase = 'title'
 			this.#menuState = 'settings'
 			this.#menuVisible = true
-			this.#renderer.canvas.addEventListener('click', this.#menuClickHandler)
-		} else if (label === 'Fullscreen') {
-			this.#toggleFullscreen()
+			this.#addMenuListeners()
 		}
 	}
 
@@ -331,6 +342,7 @@ export class EkakuRuntime {
 		this.#phase = 'playing'
 		this.#started = true
 		this.#paused = false
+		this.#dialogueBox.paused = false
 		this.#saveManager.deleteSave('auto')
 		await this.#sceneController.start()
 	}
@@ -396,7 +408,7 @@ export class EkakuRuntime {
 		}
 	}
 
-	// ===== In-Game Menu (Escape key) =====
+	// ===== In-Game Menu and Keyboard Shortcuts =====
 
 	#onEscape(event) {
 		// Fullscreen toggle on F key
@@ -405,24 +417,37 @@ export class EkakuRuntime {
 			return
 		}
 
-		if (event.key !== 'Escape') return
+		// Menu toggle on M key
+		if (event.key === 'm' || event.key === 'M') {
+			if (this.#phase === 'title') {
+				// If a sub-menu is open on the title screen, close it
+				if (this.#menuVisible) {
+					this.#menuVisible = false
+					this.#draggingSlider = null
+					this.#removeMenuListeners()
+					this.#showTitleScreen()
+				}
+				return
+			}
 
-		if (this.#phase === 'title') {
-			// If a sub-menu is open on the title screen, close it
+			if (this.#phase !== 'playing') return
+
 			if (this.#menuVisible) {
-				this.#menuVisible = false
-				this.#renderer.canvas.removeEventListener('click', this.#menuClickHandler)
-				this.#showTitleScreen()
+				this.#hideMenu()
+			} else {
+				this.#showMenu()
 			}
 			return
 		}
 
-		if (this.#phase !== 'playing') return
-
-		if (this.#menuVisible) {
-			this.#hideMenu()
-		} else {
-			this.#showMenu()
+		// Escape key closes submenus on title screen (but not during gameplay)
+		if (event.key === 'Escape') {
+			if (this.#phase === 'title' && this.#menuVisible) {
+				this.#menuVisible = false
+				this.#draggingSlider = null
+				this.#removeMenuListeners()
+				this.#showTitleScreen()
+			}
 		}
 	}
 
@@ -430,15 +455,40 @@ export class EkakuRuntime {
 		this.#menuVisible = true
 		this.#menuState = 'main'
 		this.#paused = true
-		this.#renderer.canvas.addEventListener('click', this.#menuClickHandler)
+		this.#dialogueBox.paused = true
+		this.#addMenuListeners()
 	}
 
 	#hideMenu() {
 		this.#menuVisible = false
 		this.#paused = false
+		this.#dialogueBox.paused = false
 		this.#menuState = 'main'
 		this.#menuSelectedSlot = null
+		this.#draggingSlider = null
+		this.#removeMenuListeners()
+	}
+
+	#addMenuListeners() {
+		this.#renderer.canvas.addEventListener('click', this.#menuClickHandler)
+		this.#boundMenuMousedown = this.#onMenuMousedown.bind(this)
+		this.#boundMenuMousemove = this.#onMenuMousemove.bind(this)
+		this.#boundMenuMouseup = this.#onMenuMouseup.bind(this)
+		this.#renderer.canvas.addEventListener('mousedown', this.#boundMenuMousedown)
+		this.#renderer.canvas.addEventListener('mousemove', this.#boundMenuMousemove)
+		this.#renderer.canvas.addEventListener('mouseup', this.#boundMenuMouseup)
+	}
+
+	#removeMenuListeners() {
 		this.#renderer.canvas.removeEventListener('click', this.#menuClickHandler)
+		if (this.#boundMenuMousedown) {
+			this.#renderer.canvas.removeEventListener('mousedown', this.#boundMenuMousedown)
+			this.#renderer.canvas.removeEventListener('mousemove', this.#boundMenuMousemove)
+			this.#renderer.canvas.removeEventListener('mouseup', this.#boundMenuMouseup)
+			this.#boundMenuMousedown = null
+			this.#boundMenuMousemove = null
+			this.#boundMenuMouseup = null
+		}
 	}
 
 	#menuClickHandler = (event) => {
@@ -464,7 +514,7 @@ export class EkakuRuntime {
 		const startY = 260
 		const spacing = m.buttonSpacing
 
-		const buttons = ['Resume', 'Save Game', 'Load Game', 'Settings', 'Fullscreen', 'Title Screen']
+		const buttons = ['Resume', 'Save Game', 'Load Game', 'Settings', 'Title Screen']
 		for (let i = 0; i < buttons.length; i++) {
 			const bx = centerX - btnW / 2
 			const by = startY + i * spacing
@@ -480,10 +530,8 @@ export class EkakuRuntime {
 				} else if (i === 3) {
 					this.#menuState = 'settings'
 				} else if (i === 4) {
-					this.#toggleFullscreen()
-				} else if (i === 5) {
 					this.#autoSave()
-					this.#renderer.canvas.removeEventListener('click', this.#menuClickHandler)
+					this.#removeMenuListeners()
 					this.#showTitleScreen()
 				}
 				return
@@ -516,17 +564,16 @@ export class EkakuRuntime {
 					}
 				} else {
 					// Load
-					this.load(slots[i]).then(success => {
-						if (success) {
-							this.#renderer.canvas.removeEventListener('click', this.#menuClickHandler)
-							this.#menuVisible = false
-							this.#menuState = 'main'
-							this.#menuSelectedSlot = null
-							this.#phase = 'playing'
-							this.#started = true
-							this.#paused = false
-						}
-					})
+					const slotName = slots[i]
+					this.#removeMenuListeners()
+					this.#menuVisible = false
+					this.#menuState = 'main'
+					this.#menuSelectedSlot = null
+					this.#phase = 'playing'
+					this.#started = true
+					this.#paused = false
+					this.#dialogueBox.paused = false
+					this.load(slotName)
 				}
 				return
 			}
@@ -539,7 +586,7 @@ export class EkakuRuntime {
 		if (x >= bx && x <= bx + backW && y >= backY && y <= backY + sv.backHeight) {
 			if (this.#phase === 'title') {
 				this.#menuVisible = false
-				this.#renderer.canvas.removeEventListener('click', this.#menuClickHandler)
+				this.#removeMenuListeners()
 				this.#showTitleScreen()
 			} else {
 				this.#menuState = 'main'
@@ -577,11 +624,11 @@ export class EkakuRuntime {
 		const backY = startY + volumes.length * spacing + 30
 		const backW = st.backWidth
 		const backH = st.backHeight
-		const bx = centerX - backW / 2
-		if (x >= bx && x <= bx + backW && y >= backY && y <= backY + backH) {
+		const bx2 = centerX - backW / 2
+		if (x >= bx2 && x <= bx2 + backW && y >= backY && y <= backY + backH) {
 			if (this.#phase === 'title') {
 				this.#menuVisible = false
-				this.#renderer.canvas.removeEventListener('click', this.#menuClickHandler)
+				this.#removeMenuListeners()
 				this.#showTitleScreen()
 			} else {
 				this.#menuState = 'main'
@@ -610,6 +657,54 @@ export class EkakuRuntime {
 			this.#menuState = 'saves'
 			this.#menuSelectedSlot = 'save'
 		}
+	}
+
+	// ===== Slider Drag Handling =====
+
+	#getVolumeEntries() {
+		return [
+			{ label: 'Master', get: () => this.#audioEngine.volumes.master, set: (v) => this.#audioEngine.setMasterVolume(v) },
+			{ label: 'Music', get: () => this.#audioEngine.volumes.music, set: (v) => this.#audioEngine.setMusicVolume(v) },
+			{ label: 'SFX', get: () => this.#audioEngine.volumes.sfx, set: (v) => this.#audioEngine.setSfxVolume(v) }
+		]
+	}
+
+	#getSliderLayout() {
+		const st = this.#themeManager.settings
+		const sliderW = st.sliderWidth
+		const sliderX = this.#renderer.width / 2 - sliderW / 2
+		return { sliderX, sliderW, startY: 240, spacing: 70 }
+	}
+
+	#onMenuMousedown(event) {
+		if (this.#menuState !== 'settings') return
+
+		const pos = this.#getCanvasPos(event)
+		const { sliderX, sliderW, startY, spacing } = this.#getSliderLayout()
+		const volumes = this.#getVolumeEntries()
+
+		for (let i = 0; i < volumes.length; i++) {
+			const sy = startY + i * spacing
+			if (pos.y >= sy - 4 && pos.y <= sy + 30 + 4 && pos.x >= sliderX - 10 && pos.x <= sliderX + sliderW + 10) {
+				const val = Math.max(0, Math.min(1, (pos.x - sliderX) / sliderW))
+				volumes[i].set(val)
+				this.#draggingSlider = { index: i, set: volumes[i].set }
+				return
+			}
+		}
+	}
+
+	#onMenuMousemove(event) {
+		if (!this.#draggingSlider) return
+
+		const pos = this.#getCanvasPos(event)
+		const { sliderX, sliderW } = this.#getSliderLayout()
+		const val = Math.max(0, Math.min(1, (pos.x - sliderX) / sliderW))
+		this.#draggingSlider.set(val)
+	}
+
+	#onMenuMouseup() {
+		this.#draggingSlider = null
 	}
 
 	// ===== Drawing: In-Game Menu =====
@@ -642,7 +737,7 @@ export class EkakuRuntime {
 			align: 'center'
 		})
 
-		const buttons = ['Resume', 'Save Game', 'Load Game', 'Settings', 'Fullscreen', 'Title Screen']
+		const buttons = ['Resume', 'Save Game', 'Load Game', 'Settings', 'Title Screen']
 		const btnW = m.buttonWidth
 		const btnH = m.buttonHeight
 		const startY = 260
@@ -663,7 +758,7 @@ export class EkakuRuntime {
 			})
 		}
 
-		renderer.drawText('Press Escape to close', centerX, renderer.height - 50, {
+		renderer.drawText('Press M to close \u00b7 F for fullscreen', centerX, renderer.height - 50, {
 			font: tm.font(null, 14),
 			color: tm.color(m.hintColor, 'textHint'),
 			align: 'center'
@@ -868,6 +963,24 @@ export class EkakuRuntime {
 				// Fallback: try on the canvas itself
 				this.#renderer.canvas.requestFullscreen().catch(() => {})
 			})
+		}
+	}
+
+	#onFullscreenChange() {
+		const canvas = this.#renderer.canvas
+		if (document.fullscreenElement) {
+			// Entering fullscreen: compute CSS size to fill screen while keeping aspect ratio
+			const screenW = window.innerWidth
+			const screenH = window.innerHeight
+			const canvasW = this.#renderer.width
+			const canvasH = this.#renderer.height
+			const scale = Math.min(screenW / canvasW, screenH / canvasH)
+			canvas.style.width = Math.round(canvasW * scale) + 'px'
+			canvas.style.height = Math.round(canvasH * scale) + 'px'
+		} else {
+			// Exiting fullscreen: remove inline size overrides, let CSS handle it
+			canvas.style.width = ''
+			canvas.style.height = ''
 		}
 	}
 

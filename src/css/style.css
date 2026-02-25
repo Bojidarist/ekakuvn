@@ -25,3 +25,14 @@ html, body {
 	max-height: 100%;
 	display: block;
 }
+
+/* Fullscreen container styling */
+#ekakuvn-main:fullscreen,
+#ekakuvn-main:-webkit-full-screen {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	background: #000;
+	width: 100vw;
+	height: 100vh;
+}

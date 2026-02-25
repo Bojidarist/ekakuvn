@@ -18,6 +18,9 @@ export class DialogueBox {
 	#boundKeydown = null
 	#boundMousemove = null
 
+	// When true, input events are ignored (menu is open, game is paused)
+	paused = false
+
 	constructor(renderer, theme = null) {
 		this.#renderer = renderer
 		this.#theme = theme
@@ -274,6 +277,8 @@ export class DialogueBox {
 	}
 
 	#onClick(event) {
+		if (this.paused) return
+
 		if (this.#state === 'typing') {
 			// Skip typewriter, reveal full text
 			this.#revealedChars = this.#visibleCharCount
@@ -308,6 +313,8 @@ export class DialogueBox {
 	}
 
 	#onKeydown(event) {
+		if (this.paused) return
+
 		if (event.key === ' ' || event.key === 'Enter') {
 			if (this.#state === 'typing') {
 				this.#revealedChars = this.#visibleCharCount
