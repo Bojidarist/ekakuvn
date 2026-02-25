@@ -234,6 +234,7 @@ export class EkakuRuntime {
 
 		// Stop any playing scene
 		this.#sceneController.stop()
+		this.#audioEngine.stopMusic()
 
 		// Build button list
 		this.#titleButtons = ['New Game']
