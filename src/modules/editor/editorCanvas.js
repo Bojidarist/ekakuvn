@@ -239,11 +239,16 @@ export class EditorCanvas {
 		const w = renderer.width
 		const h = renderer.height
 
-		// Match runtime DialogueBox styling
-		const boxHeight = 180
-		const boxMargin = 20
-		const boxPadding = 20
-		const boxRadius = 12
+		// Read theme from project (matches runtime ThemeManager defaults)
+		const theme = this.#state.project.meta.theme ?? {}
+		const dialogue = theme.dialogue ?? {}
+		const colors = theme.colors ?? {}
+		const fontFamily = theme.fontFamily ?? 'sans-serif'
+
+		const boxHeight = dialogue.boxHeight ?? 180
+		const boxMargin = dialogue.boxMargin ?? 20
+		const boxPadding = dialogue.boxPadding ?? 20
+		const boxRadius = dialogue.boxRadius ?? 12
 
 		const boxX = boxMargin
 		const boxY = h - boxHeight - boxMargin
@@ -251,29 +256,34 @@ export class EditorCanvas {
 
 		// Draw box background
 		renderer.drawRect(boxX, boxY, boxW, boxHeight, {
-			fill: 'rgba(0, 0, 0, 0.75)',
+			fill: dialogue.boxColor ?? 'rgba(0, 0, 0, 0.75)',
 			radius: boxRadius
 		})
 
 		const textX = boxX + boxPadding
 		let textY = boxY + boxPadding
 
+		const speakerSize = dialogue.speakerSize ?? 22
+		const textSize = dialogue.textSize ?? 20
+		const accentColor = colors.accent ?? '#ffcc00'
+		const primaryColor = colors.primary ?? '#ffffff'
+
 		// Draw speaker name
 		if (preview.speaker) {
 			renderer.drawText(preview.speaker, textX, textY, {
-				font: 'bold 22px sans-serif',
-				color: '#ffcc00'
+				font: dialogue.speakerFont ?? `bold ${speakerSize}px ${fontFamily}`,
+				color: dialogue.speakerColor ?? accentColor
 			})
-			textY += 30
+			textY += speakerSize + 8
 		}
 
 		// Draw dialogue text
 		if (preview.text) {
 			renderer.drawText(preview.text, textX, textY, {
-				font: '20px sans-serif',
-				color: '#ffffff',
+				font: dialogue.textFont ?? `${textSize}px ${fontFamily}`,
+				color: dialogue.textColor ?? primaryColor,
 				maxWidth: boxW - boxPadding * 2,
-				lineHeight: 28
+				lineHeight: dialogue.textLineHeight ?? 28
 			})
 		}
 	}

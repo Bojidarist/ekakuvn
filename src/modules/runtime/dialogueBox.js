@@ -2,6 +2,7 @@ import { Renderer } from './renderer.js'
 
 export class DialogueBox {
 	#renderer = null
+	#theme = null
 	#state = 'idle' // idle | typing | waiting | choices
 	#currentSpeaker = null
 	#currentText = ''
@@ -17,33 +18,10 @@ export class DialogueBox {
 	#boundKeydown = null
 	#boundMousemove = null
 
-	options = {
-		boxHeight: 180,
-		boxMargin: 20,
-		boxPadding: 20,
-		boxColor: 'rgba(0, 0, 0, 0.75)',
-		boxRadius: 12,
-		speakerFont: 'bold 22px sans-serif',
-		speakerColor: '#ffcc00',
-		textFont: '20px sans-serif',
-		textColor: '#ffffff',
-		textLineHeight: 28,
-		choiceFont: '20px sans-serif',
-		choiceColor: '#ffffff',
-		choiceHoverColor: '#ffcc00',
-		choiceBgColor: 'rgba(255, 255, 255, 0.1)',
-		choiceHoverBgColor: 'rgba(255, 204, 0, 0.2)',
-		choiceRadius: 8,
-		choicePadding: 12,
-		choiceSpacing: 8,
-		advanceIndicator: true,
-		typewriterSpeed: 30
-	}
-
-	constructor(renderer, options = {}) {
+	constructor(renderer, theme = null) {
 		this.#renderer = renderer
-		Object.assign(this.options, options)
-		this.#typewriterSpeed = this.options.typewriterSpeed
+		this.#theme = theme
+		this.#typewriterSpeed = this.#d.typewriterSpeed
 
 		this.#boundClick = this.#onClick.bind(this)
 		this.#boundKeydown = this.#onKeydown.bind(this)
@@ -52,6 +30,68 @@ export class DialogueBox {
 		this.#renderer.canvas.addEventListener('click', this.#boundClick)
 		this.#renderer.canvas.addEventListener('mousemove', this.#boundMousemove)
 		document.addEventListener('keydown', this.#boundKeydown)
+	}
+
+	/**
+	 * Shorthand for dialogue theme section with resolved fallbacks.
+	 */
+	get #d() {
+		if (!this.#theme) {
+			// Fallback to hardcoded defaults when no theme is provided
+			return {
+				boxHeight: 180,
+				boxMargin: 20,
+				boxPadding: 20,
+				boxColor: 'rgba(0, 0, 0, 0.75)',
+				boxRadius: 12,
+				speakerFont: 'bold 22px sans-serif',
+				speakerColor: '#ffcc00',
+				textFont: '20px sans-serif',
+				textColor: '#ffffff',
+				textLineHeight: 28,
+				choiceFont: '20px sans-serif',
+				choiceColor: '#ffffff',
+				choiceHoverColor: '#ffcc00',
+				choiceBgColor: 'rgba(255, 255, 255, 0.1)',
+				choiceHoverBgColor: 'rgba(255, 204, 0, 0.2)',
+				choiceStrokeColor: 'rgba(255, 255, 255, 0.3)',
+				choiceRadius: 8,
+				choicePadding: 12,
+				choiceSpacing: 8,
+				choiceWidth: 400,
+				choiceHeight: 44,
+				advanceIndicator: true,
+				typewriterSpeed: 30
+			}
+		}
+
+		const d = this.#theme.dialogue
+		const t = this.#theme
+		return {
+			boxHeight: d.boxHeight,
+			boxMargin: d.boxMargin,
+			boxPadding: d.boxPadding,
+			boxColor: d.boxColor,
+			boxRadius: d.boxRadius,
+			speakerFont: t.font(d.speakerFont, d.speakerSize, true),
+			speakerColor: t.color(d.speakerColor, 'accent'),
+			textFont: t.font(d.textFont, d.textSize),
+			textColor: t.color(d.textColor, 'primary'),
+			textLineHeight: d.textLineHeight,
+			choiceFont: t.font(d.choiceFont, d.choiceSize),
+			choiceColor: t.color(d.choiceColor, 'primary'),
+			choiceHoverColor: t.color(d.choiceHoverColor, 'accent'),
+			choiceBgColor: d.choiceBgColor,
+			choiceHoverBgColor: d.choiceHoverBgColor,
+			choiceStrokeColor: d.choiceStrokeColor,
+			choiceRadius: d.choiceRadius,
+			choicePadding: d.choicePadding,
+			choiceSpacing: d.choiceSpacing,
+			choiceWidth: d.choiceWidth,
+			choiceHeight: d.choiceHeight,
+			advanceIndicator: d.advanceIndicator,
+			typewriterSpeed: d.typewriterSpeed
+		}
 	}
 
 	get state() {
@@ -76,26 +116,26 @@ export class DialogueBox {
 
 		const w = renderer.width
 		const h = renderer.height
-		const { boxHeight, boxMargin, boxPadding, boxColor, boxRadius } = this.options
+		const d = this.#d
 
-		const boxX = boxMargin
-		const boxY = h - boxHeight - boxMargin
-		const boxW = w - boxMargin * 2
+		const boxX = d.boxMargin
+		const boxY = h - d.boxHeight - d.boxMargin
+		const boxW = w - d.boxMargin * 2
 
 		// Draw box background
-		renderer.drawRect(boxX, boxY, boxW, boxHeight, {
-			fill: boxColor,
-			radius: boxRadius
+		renderer.drawRect(boxX, boxY, boxW, d.boxHeight, {
+			fill: d.boxColor,
+			radius: d.boxRadius
 		})
 
-		const textX = boxX + boxPadding
-		let textY = boxY + boxPadding
+		const textX = boxX + d.boxPadding
+		let textY = boxY + d.boxPadding
 
 		// Draw speaker name
 		if (this.#currentSpeaker) {
 			renderer.drawText(this.#currentSpeaker, textX, textY, {
-				font: this.options.speakerFont,
-				color: this.options.speakerColor
+				font: d.speakerFont,
+				color: d.speakerColor
 			})
 			textY += 30
 		}
@@ -104,27 +144,29 @@ export class DialogueBox {
 		if (this.#state === 'choices') {
 			// Show full text above choices
 			renderer.drawRichText(this.#currentText, textX, textY, {
-				font: this.options.textFont,
-				color: this.options.textColor,
-				maxWidth: boxW - boxPadding * 2,
-				lineHeight: this.options.textLineHeight
+				font: d.textFont,
+				color: d.textColor,
+				maxWidth: boxW - d.boxPadding * 2,
+				lineHeight: d.textLineHeight
 			})
 		} else {
 			renderer.drawRichText(this.#currentText, textX, textY, {
-				font: this.options.textFont,
-				color: this.options.textColor,
-				maxWidth: boxW - boxPadding * 2,
-				lineHeight: this.options.textLineHeight
+				font: d.textFont,
+				color: d.textColor,
+				maxWidth: boxW - d.boxPadding * 2,
+				lineHeight: d.textLineHeight
 			}, this.#revealedChars)
 		}
 
 		// Draw advance indicator
-		if (this.#state === 'waiting' && this.options.advanceIndicator) {
-			const indicatorX = boxX + boxW - boxPadding - 10
-			const indicatorY = boxY + boxHeight - boxPadding - 5
+		if (this.#state === 'waiting' && d.advanceIndicator) {
+			const indicatorX = boxX + boxW - d.boxPadding - 10
+			const indicatorY = boxY + d.boxHeight - d.boxPadding - 5
 			const pulse = Math.sin(Date.now() / 300) * 0.3 + 0.7
+			const indicatorColor = d.textColor
+			// Extract RGB from the text color for pulsing alpha
 			renderer.drawText('\u25BC', indicatorX, indicatorY, {
-				font: '16px sans-serif',
+				font: this.#theme ? this.#theme.font(null, 16) : '16px sans-serif',
 				color: `rgba(255, 255, 255, ${pulse})`,
 				align: 'center'
 			})
@@ -178,28 +220,26 @@ export class DialogueBox {
 	#drawChoices(renderer) {
 		const w = renderer.width
 		const h = renderer.height
-		const { choicePadding, choiceSpacing, choiceRadius } = this.options
+		const d = this.#d
 
-		const choiceW = 400
-		const choiceH = 44
-		const startX = (w - choiceW) / 2
-		const totalH = this.#choices.length * (choiceH + choiceSpacing) - choiceSpacing
+		const startX = (w - d.choiceWidth) / 2
+		const totalH = this.#choices.length * (d.choiceHeight + d.choiceSpacing) - d.choiceSpacing
 		const startY = (h - totalH) / 2
 
 		for (let i = 0; i < this.#choices.length; i++) {
-			const y = startY + i * (choiceH + choiceSpacing)
+			const y = startY + i * (d.choiceHeight + d.choiceSpacing)
 			const isHovered = i === this.#hoveredChoice
 
-			renderer.drawRect(startX, y, choiceW, choiceH, {
-				fill: isHovered ? this.options.choiceHoverBgColor : this.options.choiceBgColor,
-				stroke: isHovered ? this.options.choiceHoverColor : 'rgba(255,255,255,0.3)',
+			renderer.drawRect(startX, y, d.choiceWidth, d.choiceHeight, {
+				fill: isHovered ? d.choiceHoverBgColor : d.choiceBgColor,
+				stroke: isHovered ? d.choiceHoverColor : d.choiceStrokeColor,
 				strokeWidth: 1,
-				radius: choiceRadius
+				radius: d.choiceRadius
 			})
 
-			renderer.drawText(this.#choices[i].text, startX + choicePadding, y + choicePadding, {
-				font: this.options.choiceFont,
-				color: isHovered ? this.options.choiceHoverColor : this.options.choiceColor
+			renderer.drawText(this.#choices[i].text, startX + d.choicePadding, y + d.choicePadding, {
+				font: d.choiceFont,
+				color: isHovered ? d.choiceHoverColor : d.choiceColor
 			})
 		}
 	}
@@ -207,17 +247,15 @@ export class DialogueBox {
 	#getChoiceAtPosition(x, y) {
 		const w = this.#renderer.width
 		const h = this.#renderer.height
-		const { choiceSpacing } = this.options
+		const d = this.#d
 
-		const choiceW = 400
-		const choiceH = 44
-		const startX = (w - choiceW) / 2
-		const totalH = this.#choices.length * (choiceH + choiceSpacing) - choiceSpacing
+		const startX = (w - d.choiceWidth) / 2
+		const totalH = this.#choices.length * (d.choiceHeight + d.choiceSpacing) - d.choiceSpacing
 		const startY = (h - totalH) / 2
 
 		for (let i = 0; i < this.#choices.length; i++) {
-			const cy = startY + i * (choiceH + choiceSpacing)
-			if (x >= startX && x <= startX + choiceW && y >= cy && y <= cy + choiceH) {
+			const cy = startY + i * (d.choiceHeight + d.choiceSpacing)
+			if (x >= startX && x <= startX + d.choiceWidth && y >= cy && y <= cy + d.choiceHeight) {
 				return i
 			}
 		}

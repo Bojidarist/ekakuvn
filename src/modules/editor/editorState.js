@@ -91,6 +91,11 @@ export class EditorState {
 			this.#project.folders = []
 		}
 
+		// Ensure theme field exists (null = use defaults)
+		if (this.#project.meta.theme === undefined) {
+			this.#project.meta.theme = null
+		}
+
 		this.#currentSceneId = this.#project.startScene ?? this.#project.scenes[0]?.id ?? null
 		this.#selectedElementId = null
 		this.#undoStack = []
@@ -631,6 +636,11 @@ export class EditorState {
 			}
 		}
 
+		// Clean up theme -- only include if non-null (partial overrides present)
+		if (!script.meta.theme || (typeof script.meta.theme === 'object' && Object.keys(script.meta.theme).length === 0)) {
+			delete script.meta.theme
+		}
+
 		return script
 	}
 
@@ -648,6 +658,10 @@ export class EditorState {
 				// Ensure folders array exists for backward compatibility
 				if (!this.#project.folders) {
 					this.#project.folders = []
+				}
+				// Ensure theme field exists (null = use defaults)
+				if (this.#project.meta.theme === undefined) {
+					this.#project.meta.theme = null
 				}
 				this.#currentSceneId = this.#project.startScene ?? this.#project.scenes[0]?.id ?? null
 				return true
@@ -670,7 +684,8 @@ export class EditorState {
 				mainMenu: {
 					background: null,
 					title: null
-				}
+				},
+				theme: null
 			},
 			assets: [],
 			folders: [],

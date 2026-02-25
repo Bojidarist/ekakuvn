@@ -5,6 +5,7 @@ import { DialogueBox } from './dialogueBox.js'
 import { SceneController } from './sceneController.js'
 import { SaveManager } from './saveManager.js'
 import { TransitionManager } from './transitionManager.js'
+import { ThemeManager } from './themeManager.js'
 
 export class EkakuRuntime {
 	#renderer = null
@@ -14,6 +15,7 @@ export class EkakuRuntime {
 	#sceneController = null
 	#saveManager = null
 	#transitionManager = null
+	#themeManager = null
 	#script = null
 	#paused = false
 	#started = false
@@ -47,6 +49,9 @@ export class EkakuRuntime {
 		this.#script = script
 		const resolution = script.meta?.resolution ?? { width: 1280, height: 720 }
 
+		// Create ThemeManager from script meta
+		this.#themeManager = new ThemeManager(script.meta?.theme ?? null)
+
 		// Create or find canvas
 		if (typeof targetOrSelector === 'string') {
 			this.#renderer = new Renderer(targetOrSelector, resolution.width, resolution.height)
@@ -61,7 +66,7 @@ export class EkakuRuntime {
 
 		// AudioEngine is created but AudioContext is deferred until user gesture
 		this.#audioEngine = new AudioEngine()
-		this.#dialogueBox = new DialogueBox(this.#renderer)
+		this.#dialogueBox = new DialogueBox(this.#renderer, this.#themeManager)
 
 		this.#assetLoader = new AssetLoader((progress) => {
 			this.#drawLoadingScreen(progress)
@@ -74,7 +79,8 @@ export class EkakuRuntime {
 			assetLoader: this.#assetLoader,
 			audioEngine: this.#audioEngine,
 			dialogueBox: this.#dialogueBox,
-			transitionManager: this.#transitionManager
+			transitionManager: this.#transitionManager,
+			themeManager: this.#themeManager
 		})
 
 		// Compute script hash for save manager
@@ -225,6 +231,7 @@ export class EkakuRuntime {
 
 		// Set background to title screen
 		const menuConfig = this.#script.meta?.mainMenu
+		const bgColor = this.#themeManager.colors.background
 		this.#renderer.setLayer('background', (renderer) => {
 			if (menuConfig?.background) {
 				const bgAsset = this.#assetLoader.getAsset(menuConfig.background)
@@ -233,7 +240,7 @@ export class EkakuRuntime {
 					return
 				}
 			}
-			renderer.drawRect(0, 0, renderer.width, renderer.height, { fill: '#1a1a2e' })
+			renderer.drawRect(0, 0, renderer.width, renderer.height, { fill: bgColor })
 		})
 		this.#renderer.setLayer('characters', () => {})
 
@@ -260,9 +267,10 @@ export class EkakuRuntime {
 		const w = this.#renderer.width
 		const h = this.#renderer.height
 		const centerX = w / 2
-		const btnW = 280
-		const btnH = 50
-		const spacing = 16
+		const ts = this.#themeManager.titleScreen
+		const btnW = ts.buttonWidth
+		const btnH = ts.buttonHeight
+		const spacing = ts.buttonSpacing
 		const totalH = this.#titleButtons.length * btnH + (this.#titleButtons.length - 1) * spacing
 		const startY = h / 2 + 20
 
@@ -332,25 +340,27 @@ export class EkakuRuntime {
 		const h = renderer.height
 		const centerX = w / 2
 		const menuConfig = this.#script.meta?.mainMenu
+		const ts = this.#themeManager.titleScreen
+		const tm = this.#themeManager
 
 		// Dim overlay for readability
-		renderer.drawRect(0, 0, w, h, { fill: 'rgba(0, 0, 0, 0.4)' })
+		renderer.drawRect(0, 0, w, h, { fill: tm.colors.dimOverlay })
 
 		// Title
 		const title = menuConfig?.title ?? this.#script.meta?.title ?? 'ekakuvn'
 		renderer.drawText(title, centerX, h * 0.28, {
-			font: 'bold 48px sans-serif',
-			color: '#ffffff',
+			font: tm.font(ts.titleFont, ts.titleSize, true),
+			color: tm.color(ts.titleColor, 'primary'),
 			align: 'center',
-			shadow: { color: 'rgba(0, 0, 0, 0.6)', blur: 8, offsetX: 0, offsetY: 3 }
+			shadow: ts.titleShadow
 		})
 
 		// Subtitle / author
 		const author = this.#script.meta?.author
 		if (author) {
 			renderer.drawText('by ' + author, centerX, h * 0.28 + 56, {
-				font: '20px sans-serif',
-				color: 'rgba(255, 255, 255, 0.6)',
+				font: tm.font(ts.subtitleFont, ts.subtitleSize),
+				color: tm.color(ts.subtitleColor, 'textSecondary'),
 				align: 'center'
 			})
 		}
@@ -364,13 +374,13 @@ export class EkakuRuntime {
 			const hovered = i === this.#titleHovered
 
 			renderer.drawRect(bx, by, btnW, btnH, {
-				fill: hovered ? 'rgba(255, 255, 255, 0.15)' : 'rgba(255, 255, 255, 0.07)',
-				stroke: hovered ? 'rgba(255, 204, 0, 0.6)' : 'rgba(255, 255, 255, 0.2)',
-				radius: 10
+				fill: hovered ? ts.buttonHoverFill : ts.buttonFill,
+				stroke: hovered ? ts.buttonHoverStroke : ts.buttonStroke,
+				radius: ts.buttonRadius
 			})
 			renderer.drawText(this.#titleButtons[i], centerX, by + 16, {
-				font: hovered ? 'bold 22px sans-serif' : '22px sans-serif',
-				color: hovered ? '#ffcc00' : '#ffffff',
+				font: tm.font(ts.buttonFont, ts.buttonSize, hovered),
+				color: hovered ? tm.color(ts.buttonHoverColor, 'accent') : tm.color(ts.buttonColor, 'primary'),
 				align: 'center'
 			})
 		}
@@ -379,8 +389,8 @@ export class EkakuRuntime {
 		const version = this.#script.meta?.version
 		if (version) {
 			renderer.drawText('v' + version, w - 16, h - 16, {
-				font: '12px sans-serif',
-				color: 'rgba(255, 255, 255, 0.3)',
+				font: tm.font(null, 12),
+				color: tm.color(ts.versionColor, 'textMuted'),
 				align: 'right'
 			})
 		}
@@ -448,10 +458,11 @@ export class EkakuRuntime {
 	#handleMainMenuClick(x, y) {
 		const w = this.#renderer.width
 		const centerX = w / 2
-		const btnW = 240
-		const btnH = 44
+		const m = this.#themeManager.menu
+		const btnW = m.buttonWidth
+		const btnH = m.buttonHeight
 		const startY = 260
-		const spacing = 56
+		const spacing = m.buttonSpacing
 
 		const buttons = ['Resume', 'Save Game', 'Load Game', 'Settings', 'Fullscreen', 'Title Screen']
 		for (let i = 0; i < buttons.length; i++) {
@@ -483,10 +494,11 @@ export class EkakuRuntime {
 	#handleSavesMenuClick(x, y) {
 		const w = this.#renderer.width
 		const centerX = w / 2
-		const btnW = 360
-		const btnH = 50
+		const sv = this.#themeManager.saves
+		const btnW = sv.slotWidth
+		const btnH = sv.slotHeight
 		const startY = 200
-		const spacing = 60
+		const spacing = sv.slotSpacing
 
 		const slots = ['slot1', 'slot2', 'slot3']
 		for (let i = 0; i < slots.length; i++) {
@@ -504,7 +516,6 @@ export class EkakuRuntime {
 					}
 				} else {
 					// Load
-					const fromTitle = this.#phase === 'title'
 					this.load(slots[i]).then(success => {
 						if (success) {
 							this.#renderer.canvas.removeEventListener('click', this.#menuClickHandler)
@@ -523,9 +534,9 @@ export class EkakuRuntime {
 
 		// Back button
 		const backY = startY + slots.length * spacing + 20
-		const backW = 120
+		const backW = sv.backWidth
 		const bx = centerX - backW / 2
-		if (x >= bx && x <= bx + backW && y >= backY && y <= backY + btnH) {
+		if (x >= bx && x <= bx + backW && y >= backY && y <= backY + sv.backHeight) {
 			if (this.#phase === 'title') {
 				this.#menuVisible = false
 				this.#renderer.canvas.removeEventListener('click', this.#menuClickHandler)
@@ -538,12 +549,11 @@ export class EkakuRuntime {
 
 	#handleSettingsClick(x, y) {
 		const w = this.#renderer.width
-		const h = this.#renderer.height
 		const centerX = w / 2
+		const st = this.#themeManager.settings
 
 		// Volume sliders layout
-		const sliderW = 300
-		const sliderH = 8
+		const sliderW = st.sliderWidth
 		const sliderX = centerX - sliderW / 2
 		const startY = 240
 		const spacing = 70
@@ -565,8 +575,8 @@ export class EkakuRuntime {
 
 		// Back button
 		const backY = startY + volumes.length * spacing + 30
-		const backW = 120
-		const backH = 44
+		const backW = st.backWidth
+		const backH = st.backHeight
 		const bx = centerX - backW / 2
 		if (x >= bx && x <= bx + backW && y >= backY && y <= backY + backH) {
 			if (this.#phase === 'title') {
@@ -583,8 +593,9 @@ export class EkakuRuntime {
 		const w = this.#renderer.width
 		const h = this.#renderer.height
 		const centerX = w / 2
-		const btnW = 140
-		const btnH = 44
+		const cf = this.#themeManager.confirm
+		const btnW = cf.buttonWidth
+		const btnH = cf.buttonHeight
 		const btnY = h / 2 + 20
 
 		// Yes button
@@ -605,7 +616,7 @@ export class EkakuRuntime {
 
 	#drawMenu(renderer) {
 		renderer.drawRect(0, 0, renderer.width, renderer.height, {
-			fill: 'rgba(0, 0, 0, 0.7)'
+			fill: this.#themeManager.colors.overlay
 		})
 
 		if (this.#menuState === 'main') {
@@ -622,37 +633,39 @@ export class EkakuRuntime {
 	#drawMainMenu(renderer) {
 		const w = renderer.width
 		const centerX = w / 2
+		const m = this.#themeManager.menu
+		const tm = this.#themeManager
 
 		renderer.drawText(this.#script.meta?.title ?? 'Menu', centerX, 180, {
-			font: 'bold 36px sans-serif',
-			color: '#ffffff',
+			font: tm.font(m.titleFont, m.titleSize, true),
+			color: tm.color(m.titleColor, 'primary'),
 			align: 'center'
 		})
 
 		const buttons = ['Resume', 'Save Game', 'Load Game', 'Settings', 'Fullscreen', 'Title Screen']
-		const btnW = 240
-		const btnH = 44
+		const btnW = m.buttonWidth
+		const btnH = m.buttonHeight
 		const startY = 260
-		const spacing = 56
+		const spacing = m.buttonSpacing
 
 		for (let i = 0; i < buttons.length; i++) {
 			const bx = centerX - btnW / 2
 			const by = startY + i * spacing
 			renderer.drawRect(bx, by, btnW, btnH, {
-				fill: 'rgba(255, 255, 255, 0.1)',
-				stroke: 'rgba(255, 255, 255, 0.3)',
-				radius: 8
+				fill: m.buttonFill,
+				stroke: m.buttonStroke,
+				radius: m.buttonRadius
 			})
 			renderer.drawText(buttons[i], centerX, by + 14, {
-				font: '20px sans-serif',
-				color: '#ffffff',
+				font: tm.font(m.buttonFont, m.buttonSize),
+				color: tm.color(m.buttonColor, 'primary'),
 				align: 'center'
 			})
 		}
 
 		renderer.drawText('Press Escape to close', centerX, renderer.height - 50, {
-			font: '14px sans-serif',
-			color: 'rgba(255, 255, 255, 0.5)',
+			font: tm.font(null, 14),
+			color: tm.color(m.hintColor, 'textHint'),
 			align: 'center'
 		})
 	}
@@ -661,18 +674,20 @@ export class EkakuRuntime {
 		const w = renderer.width
 		const centerX = w / 2
 		const isSaving = this.#menuSelectedSlot === 'save'
+		const sv = this.#themeManager.saves
+		const tm = this.#themeManager
 
 		renderer.drawText(isSaving ? 'Save Game' : 'Load Game', centerX, 140, {
-			font: 'bold 30px sans-serif',
-			color: '#ffffff',
+			font: tm.font(sv.headerFont, sv.headerSize, true),
+			color: tm.color(sv.headerColor, 'primary'),
 			align: 'center'
 		})
 
 		const slots = ['slot1', 'slot2', 'slot3']
-		const btnW = 360
-		const btnH = 50
+		const btnW = sv.slotWidth
+		const btnH = sv.slotHeight
 		const startY = 200
-		const spacing = 60
+		const spacing = sv.slotSpacing
 
 		for (let i = 0; i < slots.length; i++) {
 			const save = this.#saveManager.load(slots[i])
@@ -680,41 +695,41 @@ export class EkakuRuntime {
 			const by = startY + i * spacing
 
 			renderer.drawRect(bx, by, btnW, btnH, {
-				fill: save ? 'rgba(100, 200, 100, 0.15)' : 'rgba(255, 255, 255, 0.08)',
-				stroke: save ? 'rgba(100, 200, 100, 0.4)' : 'rgba(255, 255, 255, 0.2)',
-				radius: 8
+				fill: save ? sv.slotOccupiedFill : sv.slotFill,
+				stroke: save ? sv.slotOccupiedStroke : sv.slotStroke,
+				radius: sv.slotRadius
 			})
 
 			if (save) {
 				const date = new Date(save.timestamp)
 				const dateStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString()
 				renderer.drawText(`Slot ${i + 1}: ${save.currentSceneId}`, bx + 16, by + 10, {
-					font: '18px sans-serif',
-					color: '#ffffff'
+					font: tm.font(sv.slotFont, sv.slotSize),
+					color: tm.color(null, 'primary')
 				})
 				renderer.drawText(dateStr, bx + 16, by + 30, {
-					font: '13px sans-serif',
-					color: 'rgba(255, 255, 255, 0.6)'
+					font: tm.font(null, sv.slotDateSize),
+					color: tm.color(null, 'textSecondary')
 				})
 			} else {
 				renderer.drawText(`Slot ${i + 1}: Empty`, bx + 16, by + 16, {
-					font: '18px sans-serif',
-					color: 'rgba(255, 255, 255, 0.4)'
+					font: tm.font(sv.slotFont, sv.slotSize),
+					color: tm.color(sv.slotEmptyColor, 'textDisabled')
 				})
 			}
 		}
 
 		// Back button
 		const backY = startY + slots.length * spacing + 20
-		const backW = 120
-		renderer.drawRect(centerX - backW / 2, backY, backW, 44, {
-			fill: 'rgba(255, 255, 255, 0.1)',
-			stroke: 'rgba(255, 255, 255, 0.3)',
-			radius: 8
+		const backW = sv.backWidth
+		renderer.drawRect(centerX - backW / 2, backY, backW, sv.backHeight, {
+			fill: this.#themeManager.menu.buttonFill,
+			stroke: this.#themeManager.menu.buttonStroke,
+			radius: this.#themeManager.menu.buttonRadius
 		})
 		renderer.drawText('Back', centerX, backY + 14, {
-			font: '18px sans-serif',
-			color: '#ffffff',
+			font: tm.font(sv.backFont, sv.backSize),
+			color: tm.color(null, 'primary'),
 			align: 'center'
 		})
 	}
@@ -722,15 +737,17 @@ export class EkakuRuntime {
 	#drawSettingsMenu(renderer) {
 		const w = renderer.width
 		const centerX = w / 2
+		const st = this.#themeManager.settings
+		const tm = this.#themeManager
 
 		renderer.drawText('Settings', centerX, 160, {
-			font: 'bold 30px sans-serif',
-			color: '#ffffff',
+			font: tm.font(st.headerFont, st.headerSize, true),
+			color: tm.color(st.headerColor, 'primary'),
 			align: 'center'
 		})
 
-		const sliderW = 300
-		const sliderH = 8
+		const sliderW = st.sliderWidth
+		const sliderH = st.sliderHeight
 		const sliderX = centerX - sliderW / 2
 		const startY = 240
 		const spacing = 70
@@ -746,48 +763,48 @@ export class EkakuRuntime {
 
 			// Label
 			renderer.drawText(volumes[i].label, sliderX, sy - 20, {
-				font: '16px sans-serif',
-				color: 'rgba(255, 255, 255, 0.7)'
+				font: tm.font(st.labelFont, st.labelSize),
+				color: st.labelColor
 			})
 
 			// Percentage
 			renderer.drawText(Math.round(volumes[i].value * 100) + '%', sliderX + sliderW, sy - 20, {
-				font: '16px sans-serif',
-				color: '#ffcc00',
+				font: tm.font(null, st.labelSize),
+				color: tm.color(st.valueColor, 'accent'),
 				align: 'right'
 			})
 
 			// Track background
 			renderer.drawRect(sliderX, sy, sliderW, sliderH, {
-				fill: 'rgba(255, 255, 255, 0.15)',
-				radius: 4
+				fill: st.sliderTrackColor,
+				radius: st.sliderRadius
 			})
 
 			// Track fill
 			renderer.drawRect(sliderX, sy, sliderW * volumes[i].value, sliderH, {
-				fill: '#ffcc00',
-				radius: 4
+				fill: tm.color(st.sliderFillColor, 'accent'),
+				radius: st.sliderRadius
 			})
 
 			// Handle
 			const handleX = sliderX + sliderW * volumes[i].value
-			renderer.drawRect(handleX - 6, sy - 4, 12, sliderH + 8, {
-				fill: '#ffffff',
-				radius: 6
+			renderer.drawRect(handleX - st.sliderHandleWidth / 2, sy - 4, st.sliderHandleWidth, sliderH + 8, {
+				fill: tm.color(st.sliderHandleColor, 'primary'),
+				radius: st.sliderHandleRadius
 			})
 		}
 
 		// Back button
 		const backY = startY + volumes.length * spacing + 30
-		const backW = 120
-		renderer.drawRect(centerX - backW / 2, backY, backW, 44, {
-			fill: 'rgba(255, 255, 255, 0.1)',
-			stroke: 'rgba(255, 255, 255, 0.3)',
-			radius: 8
+		const backW = st.backWidth
+		renderer.drawRect(centerX - backW / 2, backY, backW, st.backHeight, {
+			fill: this.#themeManager.menu.buttonFill,
+			stroke: this.#themeManager.menu.buttonStroke,
+			radius: this.#themeManager.menu.buttonRadius
 		})
 		renderer.drawText('Back', centerX, backY + 14, {
-			font: '18px sans-serif',
-			color: '#ffffff',
+			font: tm.font(st.backFont, st.backSize),
+			color: tm.color(null, 'primary'),
 			align: 'center'
 		})
 	}
@@ -796,44 +813,46 @@ export class EkakuRuntime {
 		const w = renderer.width
 		const h = renderer.height
 		const centerX = w / 2
+		const cf = this.#themeManager.confirm
+		const tm = this.#themeManager
 
-		renderer.drawRect(centerX - 200, h / 2 - 60, 400, 140, {
-			fill: 'rgba(30, 30, 50, 0.95)',
-			stroke: 'rgba(255, 200, 0, 0.5)',
-			radius: 12
+		renderer.drawRect(centerX - cf.width / 2, h / 2 - cf.height / 2 + 10, cf.width, cf.height, {
+			fill: cf.bgColor,
+			stroke: cf.strokeColor,
+			radius: cf.radius
 		})
 
 		renderer.drawText('Overwrite existing save?', centerX, h / 2 - 30, {
-			font: '20px sans-serif',
-			color: '#ffffff',
+			font: tm.font(cf.textFont, cf.textSize),
+			color: tm.color(cf.textColor, 'primary'),
 			align: 'center'
 		})
 
-		const btnW = 140
-		const btnH = 44
+		const btnW = cf.buttonWidth
+		const btnH = cf.buttonHeight
 		const btnY = h / 2 + 20
 
 		// Yes
 		renderer.drawRect(centerX - btnW - 10, btnY, btnW, btnH, {
-			fill: 'rgba(200, 80, 80, 0.3)',
-			stroke: 'rgba(200, 80, 80, 0.6)',
-			radius: 8
+			fill: cf.confirmFill,
+			stroke: cf.confirmStroke,
+			radius: cf.buttonRadius
 		})
 		renderer.drawText('Yes, overwrite', centerX - btnW / 2 - 10, btnY + 14, {
-			font: '16px sans-serif',
-			color: '#ffffff',
+			font: tm.font(cf.buttonFont, cf.buttonSize),
+			color: tm.color(null, 'primary'),
 			align: 'center'
 		})
 
 		// No
 		renderer.drawRect(centerX + 10, btnY, btnW, btnH, {
-			fill: 'rgba(255, 255, 255, 0.1)',
-			stroke: 'rgba(255, 255, 255, 0.3)',
-			radius: 8
+			fill: cf.cancelFill,
+			stroke: cf.cancelStroke,
+			radius: cf.buttonRadius
 		})
 		renderer.drawText('Cancel', centerX + btnW / 2 + 10, btnY + 14, {
-			font: '16px sans-serif',
-			color: '#ffffff',
+			font: tm.font(cf.buttonFont, cf.buttonSize),
+			color: tm.color(null, 'primary'),
 			align: 'center'
 		})
 	}
@@ -857,38 +876,40 @@ export class EkakuRuntime {
 	#drawLoadingScreen(progress) {
 		const w = this.#renderer.width
 		const h = this.#renderer.height
+		const ld = this.#themeManager.loading
+		const tm = this.#themeManager
 
 		this.#renderer.clear()
-		this.#renderer.drawRect(0, 0, w, h, { fill: '#1a1a2e' })
+		this.#renderer.drawRect(0, 0, w, h, { fill: tm.colors.background })
 
 		// Title
 		this.#renderer.drawText(this.#script.meta?.title ?? 'Loading...', w / 2, h / 2 - 60, {
-			font: 'bold 32px sans-serif',
-			color: '#ffffff',
+			font: tm.font(ld.titleFont, ld.titleSize, true),
+			color: tm.color(ld.titleColor, 'primary'),
 			align: 'center'
 		})
 
 		// Progress bar background
-		const barW = 300
-		const barH = 12
+		const barW = ld.barWidth
+		const barH = ld.barHeight
 		const barX = (w - barW) / 2
 		const barY = h / 2
 
 		this.#renderer.drawRect(barX, barY, barW, barH, {
-			fill: 'rgba(255, 255, 255, 0.1)',
-			radius: 6
+			fill: ld.barTrackColor,
+			radius: ld.barRadius
 		})
 
 		// Progress bar fill
 		this.#renderer.drawRect(barX, barY, barW * progress.progress, barH, {
-			fill: '#ffcc00',
-			radius: 6
+			fill: tm.color(ld.barFillColor, 'accent'),
+			radius: ld.barRadius
 		})
 
 		// Progress text
 		this.#renderer.drawText(`${progress.loaded} / ${progress.total}`, w / 2, barY + 30, {
-			font: '16px sans-serif',
-			color: 'rgba(255, 255, 255, 0.6)',
+			font: tm.font(ld.progressFont, ld.progressSize),
+			color: tm.color(ld.progressColor, 'textSecondary'),
 			align: 'center'
 		})
 	}

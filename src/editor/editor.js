@@ -58,6 +58,10 @@ document.getElementById('btn-preview').addEventListener('click', () => {
 	openPlayPreview()
 })
 
+document.getElementById('btn-theme').addEventListener('click', () => {
+	propertiesPanel.openThemeEditor()
+})
+
 // --- Play Preview (embedded iframe) ---
 
 const previewOverlay = document.getElementById('play-preview')

@@ -10,18 +10,20 @@ export class SceneController {
 	#audioEngine = null
 	#dialogueBox = null
 	#transitionManager = null
+	#themeManager = null
 	#characterAnimator = null
 	#activeExpressions = new Map() // charIndex -> assetId override
 	#running = false
 	#onSceneChange = null
 	#onEnd = null
 
-	constructor({ renderer, assetLoader, audioEngine, dialogueBox, transitionManager }) {
+	constructor({ renderer, assetLoader, audioEngine, dialogueBox, transitionManager, themeManager }) {
 		this.#renderer = renderer
 		this.#assetLoader = assetLoader
 		this.#audioEngine = audioEngine
 		this.#dialogueBox = dialogueBox
 		this.#transitionManager = transitionManager ?? null
+		this.#themeManager = themeManager ?? null
 		this.#characterAnimator = new CharacterAnimator()
 	}
 
@@ -126,10 +128,11 @@ export class SceneController {
 	}
 
 	#setupBackground(scene) {
+		const fallbackColor = this.#themeManager?.colors?.background ?? '#1a1a2e'
 		this.#renderer.setLayer('background', (renderer) => {
 			if (!scene.background) {
 				renderer.drawRect(0, 0, renderer.width, renderer.height, {
-					fill: '#1a1a2e'
+					fill: fallbackColor
 				})
 				return
 			}
@@ -139,7 +142,7 @@ export class SceneController {
 				renderer.drawImage(bgAsset.resource, 0, 0, renderer.width, renderer.height)
 			} else {
 				renderer.drawRect(0, 0, renderer.width, renderer.height, {
-					fill: '#1a1a2e'
+					fill: fallbackColor
 				})
 			}
 		})
