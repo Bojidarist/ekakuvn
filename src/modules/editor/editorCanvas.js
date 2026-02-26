@@ -11,7 +11,7 @@ export class EditorCanvas {
 	#textboxVisible = true
 
 	// Cached computed state (recalculated on preview/scene change)
-	#activeChars = new Map()   // Map<name, { nodeId, assetId, position, scale, flipped, expressions, currentExpression }>
+	#activeChars = new Map()   // Map<nodeId, { nodeId, name, assetId, position, scale, flipped, expressions, currentExpression }>
 	#activeBgAssetId = null
 	#activeDialogue = null     // { speaker, text } or null
 
@@ -334,7 +334,10 @@ export class EditorCanvas {
 	}
 
 	#findCharByName(name) {
-		return this.#activeChars.get(name) ?? null
+		for (const [, char] of this.#activeChars) {
+			if (char.name === name) return char
+		}
+		return null
 	}
 
 	// --- Selection / handle geometry ---
@@ -404,7 +407,7 @@ export class EditorCanvas {
 		// Convert active chars Map to array for reverse iteration (top-most first)
 		const entries = [...this.#activeChars.entries()]
 		for (let i = entries.length - 1; i >= 0; i--) {
-			const [name, char] = entries[i]
+			const [, char] = entries[i]
 			const img = this.#getImage(char.assetId)
 			if (!img) continue
 
@@ -416,7 +419,7 @@ export class EditorCanvas {
 
 			if (canvasX >= drawX && canvasX <= drawX + drawW &&
 				canvasY >= drawY && canvasY <= drawY + drawH) {
-				return { nodeId: char.nodeId, charName: name, offsetX: canvasX - drawX, offsetY: canvasY - drawY }
+				return { nodeId: char.nodeId, charName: char.name, offsetX: canvasX - drawX, offsetY: canvasY - drawY }
 			}
 		}
 

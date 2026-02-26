@@ -219,7 +219,7 @@ export class SceneController {
 			const node = scene.timeline[i]
 
 			// Execute the node action
-			await this.#executeNode(node)
+			await this.#executeNode(node, i)
 
 			// If auto-advance, apply delay then continue to next node
 			if (node.auto !== false) {
@@ -234,7 +234,7 @@ export class SceneController {
 		await this.#handleSceneEnd()
 	}
 
-	async #executeNode(node) {
+	async #executeNode(node, nodeIndex) {
 		switch (node.type) {
 			case 'dialogue':
 				await this.#dialogueBox.showDialogue(node.speaker, node.text, {
@@ -243,7 +243,8 @@ export class SceneController {
 				break
 
 			case 'showCharacter':
-				this.#activeCharacters.set(node.name, {
+				this.#activeCharacters.set(nodeIndex, {
+					name: node.name,
 					assetId: node.assetId,
 					position: node.position ?? { x: 0.5, y: 0.8 },
 					scale: node.scale ?? 1.0,
@@ -256,16 +257,19 @@ export class SceneController {
 				break
 
 			case 'hideCharacter':
-				this.#activeCharacters.delete(node.name)
+				for (const [key, char] of this.#activeCharacters) {
+					if (char.name === node.name) this.#activeCharacters.delete(key)
+				}
 				this.#refreshCharacterLayer()
 				break
 
 			case 'expression': {
-				const char = this.#activeCharacters.get(node.name)
-				if (char) {
-					char.currentExpression = node.expression
-					this.#refreshCharacterLayer()
+				for (const [, char] of this.#activeCharacters) {
+					if (char.name === node.name) {
+						char.currentExpression = node.expression
+					}
 				}
+				this.#refreshCharacterLayer()
 				break
 			}
 
@@ -331,7 +335,8 @@ export class SceneController {
 
 			switch (node.type) {
 				case 'showCharacter':
-					this.#activeCharacters.set(node.name, {
+					this.#activeCharacters.set(i, {
+						name: node.name,
 						assetId: node.assetId,
 						position: node.position ?? { x: 0.5, y: 0.8 },
 						scale: node.scale ?? 1.0,
@@ -343,12 +348,15 @@ export class SceneController {
 					break
 
 				case 'hideCharacter':
-					this.#activeCharacters.delete(node.name)
+					for (const [key, char] of this.#activeCharacters) {
+						if (char.name === node.name) this.#activeCharacters.delete(key)
+					}
 					break
 
 				case 'expression': {
-					const char = this.#activeCharacters.get(node.name)
-					if (char) char.currentExpression = node.expression
+					for (const [, char] of this.#activeCharacters) {
+						if (char.name === node.name) char.currentExpression = node.expression
+					}
 					break
 				}
 

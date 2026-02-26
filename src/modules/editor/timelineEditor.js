@@ -324,7 +324,7 @@ export class TimelineEditor {
 
 	#buildEditFields(node, scene) {
 		switch (node.type) {
-			case 'dialogue': return this.#buildDialogueFields(node)
+			case 'dialogue': return this.#buildDialogueFields(node, scene)
 			case 'showCharacter': return this.#buildShowCharacterFields(node, scene)
 			case 'hideCharacter': return this.#buildHideCharacterFields(node, scene)
 			case 'expression': return this.#buildExpressionFields(node, scene)
@@ -337,7 +337,7 @@ export class TimelineEditor {
 		}
 	}
 
-	#buildDialogueFields(node) {
+	#buildDialogueFields(node, scene) {
 		const fields = []
 
 		fields.push(this.#makeField('Speaker', () => {

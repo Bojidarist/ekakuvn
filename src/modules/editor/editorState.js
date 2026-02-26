@@ -341,8 +341,9 @@ export class EditorState {
 		for (let i = 0; i < limit && i < scene.timeline.length; i++) {
 			const node = scene.timeline[i]
 			if (node.type === 'showCharacter') {
-				chars.set(node.data.name, {
+				chars.set(node.id, {
 					nodeId: node.id,
+					name: node.data.name,
 					assetId: node.data.assetId,
 					position: { ...node.data.position },
 					scale: node.data.scale,
@@ -352,11 +353,14 @@ export class EditorState {
 					currentExpression: null
 				})
 			} else if (node.type === 'hideCharacter') {
-				chars.delete(node.data.name)
+				for (const [id, char] of chars) {
+					if (char.name === node.data.name) chars.delete(id)
+				}
 			} else if (node.type === 'expression') {
-				const char = chars.get(node.data.name)
-				if (char) {
-					char.currentExpression = node.data.expression
+				for (const [, char] of chars) {
+					if (char.name === node.data.name) {
+						char.currentExpression = node.data.expression
+					}
 				}
 			}
 		}
