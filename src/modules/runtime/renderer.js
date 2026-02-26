@@ -120,11 +120,13 @@ export class Renderer {
 		const {
 			font = '24px sans-serif',
 			color = '#ffffff',
+			align = 'left',
 			baseline = 'top',
 			maxWidth = undefined,
 			lineHeight = 30
 		} = options
 
+		this.#ctx.textAlign = align
 		this.#ctx.textBaseline = baseline
 
 		// Parse the markup text into styled segments

@@ -50,6 +50,7 @@ export class DialogueBox {
 				boxRadius: 12,
 				speakerFont: 'bold 22px sans-serif',
 				speakerColor: '#ffcc00',
+				speakerSize: 22,
 				textFont: '20px sans-serif',
 				textColor: '#ffffff',
 				textLineHeight: 28,
@@ -79,6 +80,7 @@ export class DialogueBox {
 			boxRadius: d.boxRadius,
 			speakerFont: t.font(d.speakerFont, d.speakerSize, true),
 			speakerColor: t.color(d.speakerColor, 'accent'),
+			speakerSize: d.speakerSize,
 			textFont: t.font(d.textFont, d.textSize),
 			textColor: t.color(d.textColor, 'primary'),
 			textLineHeight: d.textLineHeight,
@@ -151,7 +153,9 @@ export class DialogueBox {
 				font: d.speakerFont,
 				color: d.speakerColor
 			})
-			textY += 30
+			// Use dynamic spacing based on speaker font size
+			const speakerSize = d.speakerSize
+			textY += speakerSize + 8
 		}
 
 		// Draw revealed text (with markup support)
