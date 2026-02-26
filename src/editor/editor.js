@@ -5,6 +5,7 @@ import { SceneManagerPanel } from '../modules/editor/sceneManagerPanel.js'
 import { PropertiesPanel } from '../modules/editor/propertiesPanel.js'
 import { DialogueEditor } from '../modules/editor/dialogueEditor.js'
 import { ScriptSerializer } from '../modules/editor/scriptSerializer.js'
+import { PanelResizer } from '../modules/editor/panelResizer.js'
 import { EkakuConfig } from '../modules/ekakuConfig.js'
 
 // --- Initialize state ---
@@ -122,6 +123,10 @@ textboxBtn.addEventListener('click', () => {
 	editorConfig.set('textboxPreview', newState)
 	textboxBtn.classList.toggle('toggle-active', newState)
 })
+
+// --- Resizable panels ---
+
+const panelResizer = new PanelResizer(editorConfig)
 
 // --- Keyboard shortcuts ---
 

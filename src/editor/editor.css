@@ -106,7 +106,8 @@ button.toggle-active {
 
 #panel-left {
 	width: var(--panel-left-width);
-	min-width: var(--panel-left-width);
+	min-width: 150px;
+	max-width: 500px;
 	display: flex;
 	flex-direction: column;
 	background: var(--bg-panel);
@@ -449,7 +450,8 @@ button.toggle-active {
 
 #panel-right {
 	width: var(--panel-right-width);
-	min-width: var(--panel-right-width);
+	min-width: 150px;
+	max-width: 500px;
 	background: var(--bg-panel);
 	border-left: 1px solid var(--border-color);
 	overflow-y: auto;
@@ -524,7 +526,8 @@ button.toggle-active {
 
 #panel-bottom {
 	height: var(--panel-bottom-height);
-	min-height: var(--panel-bottom-height);
+	min-height: 80px;
+	max-height: 500px;
 	background: var(--bg-panel);
 	border-top: 1px solid var(--border-color);
 	display: flex;
@@ -618,6 +621,69 @@ button.toggle-active {
 
 .choice-entry .entry-speaker {
 	color: var(--success);
+}
+
+/* --- Resize handles (panel splitters) --- */
+
+.resize-handle {
+	flex-shrink: 0;
+	background: transparent;
+	position: relative;
+	z-index: 10;
+	transition: background 0.15s;
+}
+
+.resize-handle::after {
+	content: '';
+	position: absolute;
+	background: var(--accent);
+	opacity: 0;
+	transition: opacity 0.15s;
+	border-radius: 1px;
+}
+
+.resize-handle:hover::after,
+.resize-handle.active::after {
+	opacity: 1;
+}
+
+.resize-handle-left,
+.resize-handle-right {
+	width: 5px;
+	cursor: col-resize;
+}
+
+.resize-handle-left::after,
+.resize-handle-right::after {
+	top: 50%;
+	left: 1px;
+	width: 3px;
+	height: 40px;
+	transform: translateY(-50%);
+}
+
+.resize-handle-bottom {
+	height: 5px;
+	cursor: row-resize;
+}
+
+.resize-handle-bottom::after {
+	left: 50%;
+	top: 1px;
+	height: 3px;
+	width: 40px;
+	transform: translateX(-50%);
+}
+
+/* Prevent text selection during resize drag */
+body.resizing {
+	user-select: none;
+	cursor: col-resize;
+}
+
+body.resizing-row {
+	user-select: none;
+	cursor: row-resize;
 }
 
 /* Scrollbar styling */
