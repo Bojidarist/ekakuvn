@@ -14,6 +14,7 @@ export class DialogueBox {
 	#hoveredChoice = -1
 	#resolveChoice = null
 	#resolveAdvance = null
+	#autoAdvance = false
 	#boundClick = null
 	#boundKeydown = null
 	#boundMousemove = null
@@ -107,7 +108,17 @@ export class DialogueBox {
 			const charsToReveal = Math.floor(this.#elapsed * this.#typewriterSpeed)
 			if (charsToReveal >= this.#visibleCharCount) {
 				this.#revealedChars = this.#visibleCharCount
-				this.#state = 'waiting'
+				if (this.#autoAdvance) {
+					// Auto-advance: resolve immediately without waiting for click
+					this.#state = 'idle'
+					if (this.#resolveAdvance) {
+						const resolve = this.#resolveAdvance
+						this.#resolveAdvance = null
+						resolve()
+					}
+				} else {
+					this.#state = 'waiting'
+				}
 			} else {
 				this.#revealedChars = charsToReveal
 			}
@@ -181,12 +192,13 @@ export class DialogueBox {
 		}
 	}
 
-	showDialogue(speaker, text) {
+	showDialogue(speaker, text, options = {}) {
 		this.#currentSpeaker = speaker
 		this.#currentText = text
 		this.#visibleCharCount = Renderer.countVisibleChars(text)
 		this.#revealedChars = 0
 		this.#elapsed = 0
+		this.#autoAdvance = options.autoAdvance ?? false
 		this.#state = 'typing'
 
 		return new Promise(resolve => {

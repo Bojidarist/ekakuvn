@@ -4,7 +4,7 @@ export class SceneController {
 	#script = null
 	#sceneMap = new Map()
 	#currentScene = null
-	#dialogueIndex = 0
+	#nodeIndex = 0
 	#renderer = null
 	#assetLoader = null
 	#audioEngine = null
@@ -12,7 +12,8 @@ export class SceneController {
 	#transitionManager = null
 	#themeManager = null
 	#characterAnimator = null
-	#activeExpressions = new Map() // charIndex -> assetId override
+	#activeCharacters = new Map() // name -> { assetId, position, scale, flipped, expressions, currentExpression }
+	#currentBackground = null
 	#running = false
 	#onSceneChange = null
 	#onEnd = null
@@ -31,8 +32,8 @@ export class SceneController {
 		return this.#currentScene?.id ?? null
 	}
 
-	get dialogueIndex() {
-		return this.#dialogueIndex
+	get nodeIndex() {
+		return this.#nodeIndex
 	}
 
 	get isRunning() {
@@ -75,17 +76,17 @@ export class SceneController {
 		return scene ? scene.id : null
 	}
 
-	async start(sceneId, dialogueIndex = 0) {
+	async start(sceneId, nodeIndex = 0) {
 		if (!this.#script) throw new Error('SceneController: no script loaded')
 
 		const startId = sceneId ?? this.#script.startScene
 		if (!startId) throw new Error('SceneController: no startScene defined in script')
 
 		this.#running = true
-		await this.loadScene(startId, dialogueIndex)
+		await this.loadScene(startId, nodeIndex)
 	}
 
-	async loadScene(sceneId, startDialogueIndex = 0) {
+	async loadScene(sceneId, startNodeIndex = 0) {
 		const scene = this.#sceneMap.get(sceneId)
 		if (!scene) {
 			console.warn(`SceneController: scene "${sceneId}" not found`)
@@ -101,16 +102,13 @@ export class SceneController {
 		}
 
 		this.#currentScene = scene
-		this.#dialogueIndex = startDialogueIndex
+		this.#nodeIndex = startNodeIndex
+		this.#activeCharacters.clear()
+		this.#currentBackground = null
 
-		// Set up background layer
-		this.#setupBackground(scene)
-
-		// Set up characters layer
-		this.#setupCharacters(scene)
-
-		// Set up music
-		this.#setupMusic(scene)
+		// Set up initial empty layers
+		this.#refreshBackgroundLayer()
+		this.#refreshCharacterLayer()
 
 		// Notify scene change
 		if (this.#onSceneChange) {
@@ -123,21 +121,28 @@ export class SceneController {
 			await this.#transitionManager.start(transition.type, transition.duration)
 		}
 
-		// Start dialogue playback
-		await this.#playDialogue()
+		// If restoring to a mid-timeline position, replay earlier nodes silently
+		if (startNodeIndex > 0) {
+			this.#replayUpTo(startNodeIndex)
+		}
+
+		// Start timeline playback
+		await this.#playTimeline()
 	}
 
-	#setupBackground(scene) {
+	#refreshBackgroundLayer() {
 		const fallbackColor = this.#themeManager?.colors?.background ?? '#1a1a2e'
+		const bgAssetId = this.#currentBackground
+
 		this.#renderer.setLayer('background', (renderer) => {
-			if (!scene.background) {
+			if (!bgAssetId) {
 				renderer.drawRect(0, 0, renderer.width, renderer.height, {
 					fill: fallbackColor
 				})
 				return
 			}
 
-			const bgAsset = this.#assetLoader.getAsset(scene.background)
+			const bgAsset = this.#assetLoader.getAsset(bgAssetId)
 			if (bgAsset && bgAsset.resource) {
 				renderer.drawImage(bgAsset.resource, 0, 0, renderer.width, renderer.height)
 			} else {
@@ -148,21 +153,23 @@ export class SceneController {
 		})
 	}
 
-	#setupCharacters(scene) {
-		// Reset active expressions for new scene
-		this.#activeExpressions.clear()
+	#refreshCharacterLayer() {
+		const chars = [...this.#activeCharacters.values()]
 
-		// Trigger enter animations for characters
-		this.#characterAnimator.animateEnter(scene.characters ?? [])
+		// Trigger enter animations for newly added characters
+		this.#characterAnimator.animateEnter(chars)
 
 		this.#renderer.setLayer('characters', (renderer) => {
-			if (!scene.characters || scene.characters.length === 0) return
+			if (chars.length === 0) return
 
-			for (let i = 0; i < scene.characters.length; i++) {
-				const charData = scene.characters[i]
-
+			for (const charData of chars) {
 				// Use expression override if set, otherwise default assetId
-				const displayAssetId = this.#activeExpressions.get(i) ?? charData.assetId
+				let displayAssetId = charData.assetId
+				if (charData.currentExpression && charData.expressions) {
+					const exprAssetId = charData.expressions[charData.currentExpression]
+					if (exprAssetId) displayAssetId = exprAssetId
+				}
+
 				const charAsset = this.#assetLoader.getAsset(displayAssetId)
 				if (!charAsset || !charAsset.resource) continue
 
@@ -198,76 +205,179 @@ export class SceneController {
 		})
 	}
 
-	#setupMusic(scene) {
-		if (!scene.music) {
-			this.#audioEngine.stopMusic()
-			return
-		}
-
-		const musicAsset = this.#assetLoader.getAsset(scene.music.assetId)
-		if (!musicAsset || !musicAsset.resource) return
-
-		// Don't restart if same music is already playing
-		if (this.#audioEngine.currentMusicId === scene.music.assetId) return
-
-		this.#audioEngine.playMusic(musicAsset.resource, scene.music.assetId, {
-			loop: scene.music.loop ?? true
-		})
-	}
-
-	async #playDialogue() {
+	async #playTimeline() {
 		const scene = this.#currentScene
-		if (!scene || !scene.dialogue) {
+		if (!scene?.timeline) {
 			await this.#handleSceneEnd()
 			return
 		}
 
-		for (let i = this.#dialogueIndex; i < scene.dialogue.length; i++) {
+		for (let i = this.#nodeIndex; i < scene.timeline.length; i++) {
 			if (!this.#running) return
 
-			this.#dialogueIndex = i
-			const entry = scene.dialogue[i]
+			this.#nodeIndex = i
+			const node = scene.timeline[i]
 
-			// Apply expression change if specified
-			if (entry.expression && scene.characters) {
-				this.#applyExpression(scene, entry.speaker, entry.expression)
+			// Execute the node action
+			await this.#executeNode(node)
+
+			// If auto-advance, apply delay then continue to next node
+			if (node.auto !== false) {
+				if (node.delay > 0) {
+					await this.#sleep(node.delay)
+				}
 			}
-
-			// Show dialogue and wait for player to advance
-			await this.#dialogueBox.showDialogue(entry.speaker, entry.text)
 		}
 
-		// Dialogue finished, handle choices or next scene
-		this.#dialogueIndex = scene.dialogue.length
+		// Timeline finished
+		this.#nodeIndex = scene.timeline.length
 		await this.#handleSceneEnd()
 	}
 
-	#applyExpression(scene, speaker, expression) {
-		if (!scene.characters) return
+	async #executeNode(node) {
+		switch (node.type) {
+			case 'dialogue':
+				await this.#dialogueBox.showDialogue(node.speaker, node.text, {
+					autoAdvance: node.auto
+				})
+				break
 
-		for (let i = 0; i < scene.characters.length; i++) {
-			const charData = scene.characters[i]
-			if (!charData.expressions) continue
+			case 'showCharacter':
+				this.#activeCharacters.set(node.name, {
+					assetId: node.assetId,
+					position: node.position ?? { x: 0.5, y: 0.8 },
+					scale: node.scale ?? 1.0,
+					flipped: node.flipped ?? false,
+					enterAnimation: node.enterAnimation ?? null,
+					expressions: node.expressions ?? {},
+					currentExpression: null
+				})
+				this.#refreshCharacterLayer()
+				break
 
-			// Match by speaker name: compare against the asset name/id
-			const charAsset = this.#assetLoader.getAsset(charData.assetId)
-			const charName = charAsset ? (charAsset.id ?? '') : ''
+			case 'hideCharacter':
+				this.#activeCharacters.delete(node.name)
+				this.#refreshCharacterLayer()
+				break
 
-			// Match if: speaker matches asset name, or there's only one character in scene
-			const isMatch = scene.characters.length === 1 ||
-				(speaker && charName.toLowerCase() === speaker.toLowerCase())
+			case 'expression': {
+				const char = this.#activeCharacters.get(node.name)
+				if (char) {
+					char.currentExpression = node.expression
+					this.#refreshCharacterLayer()
+				}
+				break
+			}
 
-			if (isMatch && charData.expressions[expression]) {
-				this.#activeExpressions.set(i, charData.expressions[expression])
+			case 'background':
+				this.#currentBackground = node.assetId
+				this.#refreshBackgroundLayer()
+				break
+
+			case 'music':
+				if (node.action === 'stop') {
+					this.#audioEngine.stopMusic()
+				} else {
+					this.#playMusic(node.assetId, node.loop)
+				}
+				break
+
+			case 'sound': {
+				const sfxAsset = this.#assetLoader.getAsset(node.assetId)
+				if (sfxAsset && sfxAsset.resource) {
+					this.#audioEngine.playSfx(sfxAsset.resource)
+				}
+				break
+			}
+
+			case 'wait':
+				await this.#sleep(node.duration ?? 0)
+				break
+
+			case 'choice': {
+				const choice = await this.#dialogueBox.showChoices(node.choices)
+				if (choice && choice.targetSceneId) {
+					await this.loadScene(choice.targetSceneId)
+				} else {
+					this.#handleEnd()
+				}
+				return // Don't continue timeline after choice
 			}
 		}
+	}
+
+	#playMusic(assetId, loop = true) {
+		if (!assetId) return
+
+		// Don't restart if same music is already playing
+		if (this.#audioEngine.currentMusicId === assetId) return
+
+		const musicAsset = this.#assetLoader.getAsset(assetId)
+		if (!musicAsset || !musicAsset.resource) return
+
+		this.#audioEngine.playMusic(musicAsset.resource, assetId, { loop })
+	}
+
+	/**
+	 * Replay timeline nodes 0..upTo-1 silently to reconstruct visual state.
+	 * Does not show dialogue or wait — just applies side effects.
+	 */
+	#replayUpTo(upTo) {
+		const scene = this.#currentScene
+		if (!scene?.timeline) return
+
+		for (let i = 0; i < upTo && i < scene.timeline.length; i++) {
+			const node = scene.timeline[i]
+
+			switch (node.type) {
+				case 'showCharacter':
+					this.#activeCharacters.set(node.name, {
+						assetId: node.assetId,
+						position: node.position ?? { x: 0.5, y: 0.8 },
+						scale: node.scale ?? 1.0,
+						flipped: node.flipped ?? false,
+						enterAnimation: null, // Skip animation on replay
+						expressions: node.expressions ?? {},
+						currentExpression: null
+					})
+					break
+
+				case 'hideCharacter':
+					this.#activeCharacters.delete(node.name)
+					break
+
+				case 'expression': {
+					const char = this.#activeCharacters.get(node.name)
+					if (char) char.currentExpression = node.expression
+					break
+				}
+
+				case 'background':
+					this.#currentBackground = node.assetId
+					break
+
+				case 'music':
+					if (node.action === 'stop') {
+						this.#audioEngine.stopMusic()
+					} else {
+						this.#playMusic(node.assetId, node.loop)
+					}
+					break
+
+				// dialogue, sound, wait, choice are skipped during replay
+			}
+		}
+
+		// Refresh layers after silent replay
+		this.#refreshBackgroundLayer()
+		this.#refreshCharacterLayer()
 	}
 
 	async #handleSceneEnd() {
 		const scene = this.#currentScene
 		if (!scene) return
 
-		// Check for choices
+		// Check for choices at scene level
 		if (scene.choices && scene.choices.length > 0) {
 			const choice = await this.#dialogueBox.showChoices(scene.choices)
 			if (choice && choice.targetSceneId) {
@@ -299,6 +409,10 @@ export class SceneController {
 		}
 	}
 
+	#sleep(ms) {
+		return new Promise(resolve => setTimeout(resolve, ms))
+	}
+
 	stop() {
 		this.#running = false
 		this.#dialogueBox.hide()
@@ -307,7 +421,7 @@ export class SceneController {
 	getState() {
 		return {
 			currentSceneId: this.currentSceneId,
-			dialogueIndex: this.#dialogueIndex,
+			nodeIndex: this.#nodeIndex,
 			musicState: this.#audioEngine.getMusicState()
 		}
 	}
@@ -315,12 +429,7 @@ export class SceneController {
 	async restoreState(state) {
 		if (!state || !state.currentSceneId) return
 
-		const musicOptions = {}
-		if (state.musicState && state.musicState.currentTime) {
-			musicOptions.startTime = state.musicState.currentTime
-		}
-
 		this.#running = true
-		await this.loadScene(state.currentSceneId, state.dialogueIndex ?? 0)
+		await this.loadScene(state.currentSceneId, state.nodeIndex ?? 0)
 	}
 }

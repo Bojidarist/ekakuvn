@@ -65,28 +65,52 @@ export class ScriptSerializer {
 			warnings.push(`\u2022 Start scene "${project.startScene}" does not exist`)
 		}
 
-		// Check each scene for missing references
+		// Check each scene's timeline nodes
+		const usedAssets = new Set()
+		if (project.meta?.mainMenu?.background) {
+			usedAssets.add(project.meta.mainMenu.background)
+		}
+
 		for (const scene of project.scenes) {
-			// Background references a missing asset
-			if (scene.background && !assetIds.has(scene.background)) {
-				warnings.push(`\u2022 Scene "${scene.id}": background references missing asset "${scene.background}"`)
-			}
+			const timeline = scene.timeline ?? []
+			let hasDialogue = false
+			let hasChoice = false
 
-			// Music references a missing asset
-			if (scene.music?.assetId && !assetIds.has(scene.music.assetId)) {
-				warnings.push(`\u2022 Scene "${scene.id}": music references missing asset "${scene.music.assetId}"`)
-			}
-
-			// Character references missing assets
-			for (const char of scene.characters ?? []) {
-				if (char.assetId && !assetIds.has(char.assetId)) {
-					warnings.push(`\u2022 Scene "${scene.id}": character references missing asset "${char.assetId}"`)
+			for (const node of timeline) {
+				if (node.type === 'dialogue') {
+					hasDialogue = true
 				}
-				// Validate expression asset references
-				if (char.expressions) {
-					for (const [exprName, exprAssetId] of Object.entries(char.expressions)) {
-						if (exprAssetId && !assetIds.has(exprAssetId)) {
-							warnings.push(`\u2022 Scene "${scene.id}": expression "${exprName}" references missing asset "${exprAssetId}"`)
+
+				if (node.type === 'choice') {
+					hasChoice = true
+					const choices = node.data?.choices ?? []
+					for (const choice of choices) {
+						if (choice.targetSceneId && !sceneIds.has(choice.targetSceneId)) {
+							warnings.push(`\u2022 Scene "${scene.id}": choice "${choice.text}" targets missing scene "${choice.targetSceneId}"`)
+						}
+						if (!choice.targetSceneId) {
+							warnings.push(`\u2022 Scene "${scene.id}": choice "${choice.text || '(empty)'}" has no target scene`)
+						}
+					}
+				}
+
+				// Check asset references in nodes
+				const assetId = node.data?.assetId
+				if (assetId) {
+					usedAssets.add(assetId)
+					if (!assetIds.has(assetId)) {
+						warnings.push(`\u2022 Scene "${scene.id}": ${node.type} node references missing asset "${assetId}"`)
+					}
+				}
+
+				// Check expression asset references in showCharacter nodes
+				if (node.type === 'showCharacter' && node.data?.expressions) {
+					for (const [exprName, exprAssetId] of Object.entries(node.data.expressions)) {
+						if (exprAssetId) {
+							usedAssets.add(exprAssetId)
+							if (!assetIds.has(exprAssetId)) {
+								warnings.push(`\u2022 Scene "${scene.id}": expression "${exprName}" references missing asset "${exprAssetId}"`)
+							}
 						}
 					}
 				}
@@ -97,30 +121,20 @@ export class ScriptSerializer {
 				warnings.push(`\u2022 Scene "${scene.id}": next scene "${scene.next}" does not exist`)
 			}
 
-			// Choice targets reference missing scenes
-			if (scene.choices) {
-				for (const choice of scene.choices) {
-					if (choice.targetSceneId && !sceneIds.has(choice.targetSceneId)) {
-						warnings.push(`\u2022 Scene "${scene.id}": choice "${choice.text}" targets missing scene "${choice.targetSceneId}"`)
-					}
-					if (!choice.targetSceneId) {
-						warnings.push(`\u2022 Scene "${scene.id}": choice "${choice.text}" has no target scene`)
-					}
-				}
+			// Empty timeline
+			if (timeline.length === 0) {
+				warnings.push(`\u2022 Scene "${scene.id}": has no timeline nodes`)
+			} else if (!hasDialogue && !hasChoice) {
+				warnings.push(`\u2022 Scene "${scene.id}": has no dialogue or choice nodes`)
 			}
 
-			// Scene has no dialogue and no choices (empty scene)
-			if ((!scene.dialogue || scene.dialogue.length === 0) && !scene.choices) {
-				warnings.push(`\u2022 Scene "${scene.id}": has no dialogue and no choices`)
-			}
-
-			// Dead end: no next scene and no choices
-			if (!scene.next && !scene.choices) {
-				warnings.push(`\u2022 Scene "${scene.id}": dead end (no next scene or choices)`)
+			// Dead end: no next scene and no choice node
+			if (!scene.next && !hasChoice) {
+				warnings.push(`\u2022 Scene "${scene.id}": dead end (no next scene or choice node)`)
 			}
 		}
 
-		// Find orphan scenes (not reachable from start scene)
+		// Find orphan scenes
 		if (project.startScene && sceneIds.has(project.startScene)) {
 			const reachable = new Set()
 			const queue = [project.startScene]
@@ -135,10 +149,14 @@ export class ScriptSerializer {
 				if (scene.next && !reachable.has(scene.next)) {
 					queue.push(scene.next)
 				}
-				if (scene.choices) {
-					for (const choice of scene.choices) {
-						if (choice.targetSceneId && !reachable.has(choice.targetSceneId)) {
-							queue.push(choice.targetSceneId)
+
+				// Find choice nodes in timeline for reachability
+				for (const node of scene.timeline ?? []) {
+					if (node.type === 'choice' && node.data?.choices) {
+						for (const choice of node.data.choices) {
+							if (choice.targetSceneId && !reachable.has(choice.targetSceneId)) {
+								queue.push(choice.targetSceneId)
+							}
 						}
 					}
 				}
@@ -152,23 +170,6 @@ export class ScriptSerializer {
 		}
 
 		// Check for unused assets
-		const usedAssets = new Set()
-		for (const scene of project.scenes) {
-			if (scene.background) usedAssets.add(scene.background)
-			if (scene.music?.assetId) usedAssets.add(scene.music.assetId)
-			for (const char of scene.characters ?? []) {
-				if (char.assetId) usedAssets.add(char.assetId)
-				// Track expression assets as used
-				if (char.expressions) {
-					for (const exprAssetId of Object.values(char.expressions)) {
-						if (exprAssetId) usedAssets.add(exprAssetId)
-					}
-				}
-			}
-		}
-		if (project.meta?.mainMenu?.background) {
-			usedAssets.add(project.meta.mainMenu.background)
-		}
 		for (const asset of project.assets) {
 			if (!usedAssets.has(asset.id)) {
 				warnings.push(`\u2022 Asset "${asset.name ?? asset.id}" is unused`)
@@ -207,13 +208,13 @@ export class ScriptSerializer {
 
 		// Detect if it's a runtime script or an editor project
 		if (data.meta && data.scenes && Array.isArray(data.scenes)) {
-			// Check if it has editor-specific fields (character IDs)
+			// Check if it has editor-specific fields (timeline node IDs)
 			const hasEditorFields = data.scenes.some(s =>
-				s.characters?.some(c => c.id)
+				s.timeline?.some(n => n.id)
 			)
 
 			if (hasEditorFields) {
-				// Full editor project -- load directly
+				// Full editor project -- load directly (migration happens in loadProject)
 				this.#state.loadProject(data)
 			} else {
 				// Runtime script -- convert to editor format
@@ -236,24 +237,114 @@ export class ScriptSerializer {
 			}
 		}
 
-		// Ensure characters have editor IDs
 		for (const scene of project.scenes) {
-			scene.characters = (scene.characters ?? []).map(c => ({
-				id: this.#generateId('char'),
-				assetId: c.assetId,
-				position: c.position ?? { x: 0.5, y: 0.5 },
-				scale: c.scale ?? 1.0,
-				flipped: c.flipped ?? false,
-				enterAnimation: c.enterAnimation ?? { type: 'none', duration: 0.4 },
-				expressions: c.expressions ?? {}
-			}))
+			if (scene.timeline && Array.isArray(scene.timeline)) {
+				// New runtime format (timeline nodes without IDs, flattened data)
+				// Convert to editor format: add IDs and wrap data
+				scene.timeline = scene.timeline.map(node => {
+					const { type, auto, delay, ...rest } = node
+					return {
+						id: this.#generateId('node'),
+						type,
+						auto: auto ?? false,
+						delay: delay ?? 0,
+						data: rest
+					}
+				})
+			} else {
+				// Old runtime format (flat fields: characters, dialogue, etc.)
+				// Build timeline from old fields, then EditorState#migrateScene will
+				// handle the rest on load
+				scene.timeline = []
 
-			// Normalize optional fields
-			scene.dialogue = scene.dialogue ?? []
-			scene.choices = scene.choices ?? null
+				if (scene.background) {
+					scene.timeline.push({
+						id: this.#generateId('node'),
+						type: 'background',
+						auto: true,
+						delay: 0,
+						data: { assetId: scene.background }
+					})
+				}
+
+				if (scene.music?.assetId) {
+					scene.timeline.push({
+						id: this.#generateId('node'),
+						type: 'music',
+						auto: true,
+						delay: 0,
+						data: {
+							assetId: scene.music.assetId,
+							loop: scene.music.loop ?? true,
+							action: 'play'
+						}
+					})
+				}
+
+				for (const char of scene.characters ?? []) {
+					scene.timeline.push({
+						id: this.#generateId('node'),
+						type: 'showCharacter',
+						auto: true,
+						delay: 0,
+						data: {
+							name: char.name ?? '',
+							assetId: char.assetId,
+							position: char.position ?? { x: 0.5, y: 0.8 },
+							scale: char.scale ?? 1.0,
+							flipped: char.flipped ?? false,
+							expressions: char.expressions ?? {}
+						}
+					})
+				}
+
+				for (const line of scene.dialogue ?? []) {
+					if (line.expression) {
+						scene.timeline.push({
+							id: this.#generateId('node'),
+							type: 'expression',
+							auto: true,
+							delay: 0,
+							data: {
+								name: line.speaker ?? '',
+								expression: line.expression,
+								expressionAssetId: null
+							}
+						})
+					}
+					scene.timeline.push({
+						id: this.#generateId('node'),
+						type: 'dialogue',
+						auto: false,
+						delay: 0,
+						data: {
+							speaker: line.speaker ?? null,
+							text: line.text ?? '',
+							voiceAssetId: line.voiceAssetId ?? null
+						}
+					})
+				}
+
+				if (scene.choices && scene.choices.length > 0) {
+					scene.timeline.push({
+						id: this.#generateId('node'),
+						type: 'choice',
+						auto: false,
+						delay: 0,
+						data: { choices: scene.choices }
+					})
+				}
+
+				// Clean up old fields
+				delete scene.background
+				delete scene.music
+				delete scene.characters
+				delete scene.dialogue
+				delete scene.choices
+			}
+
+			// Normalize flow fields
 			scene.next = scene.next ?? null
-			scene.background = scene.background ?? null
-			scene.music = scene.music ?? null
 			scene.transition = scene.transition ?? { type: 'fade', duration: 0.5 }
 		}
 

@@ -10,7 +10,7 @@ export class PropertiesPanel {
 		this.#contentEl = document.getElementById('properties-content')
 
 		this.#state.on('selectionChanged', () => {
-			// When a character is selected on canvas, clear asset selection display
+			// When a timeline node is selected on canvas, clear asset selection display
 			if (this.#state.selectedElementId) {
 				this.#selectedAssetId = null
 			}
@@ -18,6 +18,7 @@ export class PropertiesPanel {
 		})
 		this.#state.on('sceneChanged', () => this.render())
 		this.#state.on('sceneUpdated', () => this.render())
+		this.#state.on('timelineChanged', () => this.render())
 		this.#state.on('projectChanged', () => {
 			this.#selectedAssetId = null
 			this.#stopPropAudio()
@@ -50,9 +51,9 @@ export class PropertiesPanel {
 		const scene = this.#state.currentScene
 
 		if (selectedId && scene) {
-			const char = scene.characters.find(c => c.id === selectedId)
-			if (char) {
-				this.#renderCharacterProps(char, scene)
+			const node = this.#state.getTimelineNode(scene.id, selectedId)
+			if (node) {
+				this.#renderTimelineNodeProps(node, scene)
 				return
 			}
 		}
@@ -716,35 +717,7 @@ export class PropertiesPanel {
 		header.style.cssText = 'color: var(--accent); margin-bottom: 12px; font-size: 14px;'
 		this.#contentEl.appendChild(header)
 
-		// Background picker (show all image assets, not just those typed as 'background')
-		const imageAssets = this.#state.getImageAssets()
-		this.#addSelect('Background', scene.background, imageAssets, (val) => {
-			this.#state.updateScene(scene.id, 'background', val || null)
-		})
-
-		// Music picker
-		const musicAssets = this.#state.getAssetsByType('music')
-		const musicId = scene.music?.assetId ?? ''
-		this.#addSelect('Music', musicId, musicAssets, (val) => {
-			if (val) {
-				this.#state.updateScene(scene.id, 'music', { assetId: val, loop: true })
-			} else {
-				this.#state.updateScene(scene.id, 'music', null)
-			}
-		})
-
-		// Music loop toggle
-		if (scene.music) {
-			this.#addCheckbox('Loop music', scene.music.loop ?? true, (val) => {
-				this.#state.updateScene(scene.id, 'music', { ...scene.music, loop: val })
-			})
-		}
-
 		// Transition settings
-		const transitionDivider = document.createElement('hr')
-		transitionDivider.style.cssText = 'border: none; border-top: 1px solid var(--border); margin: 12px 0;'
-		this.#contentEl.appendChild(transitionDivider)
-
 		const transitionHeader = document.createElement('h4')
 		transitionHeader.textContent = 'Transition In'
 		transitionHeader.style.cssText = 'color: var(--accent); margin-bottom: 8px; font-size: 13px;'
@@ -776,6 +749,15 @@ export class PropertiesPanel {
 		}, { step: '0.1', min: '0.1', max: '3' })
 
 		// Next scene
+		const flowDivider = document.createElement('hr')
+		flowDivider.style.cssText = 'border: none; border-top: 1px solid var(--border); margin: 12px 0;'
+		this.#contentEl.appendChild(flowDivider)
+
+		const flowHeader = document.createElement('h4')
+		flowHeader.textContent = 'Flow'
+		flowHeader.style.cssText = 'color: var(--accent); margin-bottom: 8px; font-size: 13px;'
+		this.#contentEl.appendChild(flowHeader)
+
 		const allScenes = this.#state.scenes.filter(s => s.id !== scene.id)
 		this.#addSelect('Next scene', scene.next ?? '', allScenes.map(s => ({ id: s.id, name: s.id })), (val) => {
 			this.#state.updateScene(scene.id, 'next', val || null)
@@ -790,44 +772,119 @@ export class PropertiesPanel {
 				this.#state.project.startScene = scene.id
 			}
 		})
+
+		const hint = document.createElement('div')
+		hint.textContent = 'Background, music, and characters are now managed via timeline nodes.'
+		hint.style.cssText = 'font-size: 11px; color: var(--text-secondary); margin-top: 12px; line-height: 1.4;'
+		this.#contentEl.appendChild(hint)
 	}
 
-	#renderCharacterProps(char, scene) {
+	#renderTimelineNodeProps(node, scene) {
+		switch (node.type) {
+			case 'showCharacter':
+				this.#renderShowCharacterNodeProps(node, scene)
+				break
+			case 'hideCharacter':
+				this.#renderHideCharacterNodeProps(node, scene)
+				break
+			case 'dialogue':
+				this.#renderDialogueNodeProps(node, scene)
+				break
+			case 'expression':
+				this.#renderExpressionNodeProps(node, scene)
+				break
+			case 'background':
+				this.#renderBackgroundNodeProps(node, scene)
+				break
+			case 'music':
+				this.#renderMusicNodeProps(node, scene)
+				break
+			case 'sound':
+				this.#renderSoundNodeProps(node, scene)
+				break
+			case 'wait':
+				this.#renderWaitNodeProps(node, scene)
+				break
+			case 'choice':
+				this.#renderChoiceNodeProps(node, scene)
+				break
+			default:
+				this.#addReadonly('Type', node.type)
+				break
+		}
+
+		// Common: auto / delay
+		const commonDivider = document.createElement('hr')
+		commonDivider.style.cssText = 'border: none; border-top: 1px solid var(--border); margin: 12px 0;'
+		this.#contentEl.appendChild(commonDivider)
+
+		this.#addCheckbox('Auto-advance', node.auto ?? false, (val) => {
+			this.#state.updateTimelineNode(scene.id, node.id, { auto: val })
+		})
+
+		this.#addGroup('Delay (ms)', 'number', node.delay ?? 0, (val) => {
+			this.#state.updateTimelineNode(scene.id, node.id, { delay: parseInt(val) || 0 })
+		}, { step: '100', min: '0' })
+
+		// Delete button
+		const delBtn = document.createElement('button')
+		delBtn.textContent = 'Remove node'
+		delBtn.style.cssText = 'margin-top: 16px; width: 100%; color: var(--danger); border-color: var(--danger);'
+		delBtn.addEventListener('click', () => {
+			this.#state.removeTimelineNode(scene.id, node.id)
+		})
+		this.#contentEl.appendChild(delBtn)
+	}
+
+	#renderShowCharacterNodeProps(node, scene) {
 		const header = document.createElement('h4')
-		header.textContent = 'Character'
+		header.textContent = 'Show Character'
 		header.style.cssText = 'color: var(--accent); margin-bottom: 12px; font-size: 14px;'
 		this.#contentEl.appendChild(header)
 
+		const data = node.data
+
+		// Character name
+		this.#addGroup('Name', 'text', data.name ?? '', (val) => {
+			this.#state.updateTimelineNode(scene.id, node.id, { data: { name: val } })
+		})
+
 		// Asset info
-		const asset = this.#state.assets.find(a => a.id === char.assetId)
+		const asset = this.#state.assets.find(a => a.id === data.assetId)
 		if (asset) {
 			this.#addReadonly('Asset', asset.name ?? asset.id)
 		}
 
+		// Asset picker
+		const charAssets = this.#state.getAssetsByType('character')
+		this.#addSelect('Character asset', data.assetId ?? '', charAssets, (val) => {
+			this.#state.updateTimelineNode(scene.id, node.id, { data: { assetId: val || null } })
+		})
+
 		// Position
 		this.#addRow([
-			{ label: 'X', type: 'number', value: Math.round(char.position.x * 100) / 100, step: '0.01', onChange: (val) => {
-				this.#state.updateCharacter(scene.id, char.id, {
-					position: { ...char.position, x: parseFloat(val) || 0 }
+			{ label: 'X', type: 'number', value: Math.round((data.position?.x ?? 0.5) * 100) / 100, step: '0.01', onChange: (val) => {
+				this.#state.updateTimelineNode(scene.id, node.id, {
+					data: { position: { ...(data.position ?? { x: 0.5, y: 0.8 }), x: parseFloat(val) || 0 } }
 				})
 			}},
-			{ label: 'Y', type: 'number', value: Math.round(char.position.y * 100) / 100, step: '0.01', onChange: (val) => {
-				this.#state.updateCharacter(scene.id, char.id, {
-					position: { ...char.position, y: parseFloat(val) || 0 }
+			{ label: 'Y', type: 'number', value: Math.round((data.position?.y ?? 0.8) * 100) / 100, step: '0.01', onChange: (val) => {
+				this.#state.updateTimelineNode(scene.id, node.id, {
+					data: { position: { ...(data.position ?? { x: 0.5, y: 0.8 }), y: parseFloat(val) || 0 } }
 				})
 			}}
 		])
 
 		// Scale
-		this.#addGroup('Scale', 'number', char.scale ?? 1.0, (val) => {
-			this.#state.updateCharacter(scene.id, char.id, {
-				scale: parseFloat(val) || 1.0
+		this.#addGroup('Scale', 'number', data.scale ?? 1.0, (val) => {
+			this.#state.updateTimelineNode(scene.id, node.id, {
+				data: { scale: parseFloat(val) || 1.0 }
 			})
 		}, { step: '0.1', min: '0.1', max: '5' })
 
 		// Flip
-		this.#addCheckbox('Flip horizontal', char.flipped ?? false, (val) => {
-			this.#state.updateCharacter(scene.id, char.id, { flipped: val })
+		this.#addCheckbox('Flip horizontal', data.flipped ?? false, (val) => {
+			this.#state.updateTimelineNode(scene.id, node.id, { data: { flipped: val } })
 		})
 
 		// Enter animation settings
@@ -851,32 +908,38 @@ export class PropertiesPanel {
 			{ id: 'slideRightFade', name: 'Slide right + fade' }
 		]
 
-		const currentAnim = char.enterAnimation ?? { type: 'none', duration: 0.4 }
+		const currentAnim = data.enterAnimation ?? { type: 'none', duration: 0.4 }
 		this.#addSelect('Type', currentAnim.type, animTypes, (val) => {
-			this.#state.updateCharacter(scene.id, char.id, {
-				enterAnimation: {
-					type: val || 'none',
-					duration: currentAnim.duration ?? 0.4,
-					delay: currentAnim.delay ?? 0
+			this.#state.updateTimelineNode(scene.id, node.id, {
+				data: {
+					enterAnimation: {
+						type: val || 'none',
+						duration: currentAnim.duration ?? 0.4,
+						delay: currentAnim.delay ?? 0
+					}
 				}
 			})
 		})
 
 		if (currentAnim.type !== 'none') {
 			this.#addGroup('Duration (s)', 'number', currentAnim.duration ?? 0.4, (val) => {
-				this.#state.updateCharacter(scene.id, char.id, {
-					enterAnimation: {
-						...currentAnim,
-						duration: parseFloat(val) || 0.4
+				this.#state.updateTimelineNode(scene.id, node.id, {
+					data: {
+						enterAnimation: {
+							...currentAnim,
+							duration: parseFloat(val) || 0.4
+						}
 					}
 				})
 			}, { step: '0.05', min: '0.1', max: '3' })
 
 			this.#addGroup('Delay (s)', 'number', currentAnim.delay ?? 0, (val) => {
-				this.#state.updateCharacter(scene.id, char.id, {
-					enterAnimation: {
-						...currentAnim,
-						delay: parseFloat(val) || 0
+				this.#state.updateTimelineNode(scene.id, node.id, {
+					data: {
+						enterAnimation: {
+							...currentAnim,
+							delay: parseFloat(val) || 0
+						}
 					}
 				})
 			}, { step: '0.05', min: '0', max: '5' })
@@ -898,8 +961,7 @@ export class PropertiesPanel {
 		this.#contentEl.appendChild(exprHint)
 
 		// List existing expressions
-		const expressions = char.expressions ?? {}
-		const charAssets = this.#state.getAssetsByType('character')
+		const expressions = data.expressions ?? {}
 
 		for (const [name, exprAssetId] of Object.entries(expressions)) {
 			const exprRow = document.createElement('div')
@@ -922,7 +984,7 @@ export class PropertiesPanel {
 			removeBtn.addEventListener('mouseenter', () => { removeBtn.style.color = 'var(--danger)' })
 			removeBtn.addEventListener('mouseleave', () => { removeBtn.style.color = 'var(--text-secondary)' })
 			removeBtn.addEventListener('click', () => {
-				this.#state.removeCharacterExpression(scene.id, char.id, name)
+				this.#state.removeCharacterExpression(scene.id, node.id, name)
 			})
 
 			exprRow.appendChild(nameSpan)
@@ -963,22 +1025,228 @@ export class PropertiesPanel {
 			const exprName = nameInput.value.trim().toLowerCase()
 			const exprAssetVal = assetSelect.value
 			if (!exprName || !exprAssetVal) return
-			this.#state.addCharacterExpression(scene.id, char.id, exprName, exprAssetVal)
+			this.#state.addCharacterExpression(scene.id, node.id, exprName, exprAssetVal)
 		})
 
 		addRow.appendChild(nameInput)
 		addRow.appendChild(assetSelect)
 		addRow.appendChild(addExprBtn)
 		this.#contentEl.appendChild(addRow)
+	}
 
-		// Delete button
-		const delBtn = document.createElement('button')
-		delBtn.textContent = 'Remove character'
-		delBtn.style.cssText = 'margin-top: 16px; width: 100%; color: var(--danger); border-color: var(--danger);'
-		delBtn.addEventListener('click', () => {
-			this.#state.removeCharacter(scene.id, char.id)
+	#renderHideCharacterNodeProps(node, scene) {
+		const header = document.createElement('h4')
+		header.textContent = 'Hide Character'
+		header.style.cssText = 'color: var(--accent); margin-bottom: 12px; font-size: 14px;'
+		this.#contentEl.appendChild(header)
+
+		this.#addGroup('Character name', 'text', node.data.name ?? '', (val) => {
+			this.#state.updateTimelineNode(scene.id, node.id, { data: { name: val } })
 		})
-		this.#contentEl.appendChild(delBtn)
+	}
+
+	#renderDialogueNodeProps(node, scene) {
+		const header = document.createElement('h4')
+		header.textContent = 'Dialogue'
+		header.style.cssText = 'color: var(--accent); margin-bottom: 12px; font-size: 14px;'
+		this.#contentEl.appendChild(header)
+
+		this.#addGroup('Speaker', 'text', node.data.speaker ?? '', (val) => {
+			this.#state.updateTimelineNode(scene.id, node.id, { data: { speaker: val || null } })
+		})
+
+		// Text area (multi-line)
+		const textGroup = document.createElement('div')
+		textGroup.className = 'prop-group'
+
+		const textLabel = document.createElement('label')
+		textLabel.textContent = 'Text'
+		textGroup.appendChild(textLabel)
+
+		const textArea = document.createElement('textarea')
+		textArea.value = node.data.text ?? ''
+		textArea.rows = 3
+		textArea.style.cssText = 'width: 100%; resize: vertical; font-size: 13px; padding: 6px; border: 1px solid var(--border-color); border-radius: var(--radius); background: var(--bg-dark); color: var(--text-primary); outline: none; font-family: inherit;'
+		textArea.addEventListener('change', () => {
+			this.#state.updateTimelineNode(scene.id, node.id, { data: { text: textArea.value } })
+		})
+		textGroup.appendChild(textArea)
+		this.#contentEl.appendChild(textGroup)
+
+		// Voice asset
+		const soundAssets = this.#state.getAssetsByType('sound')
+		this.#addSelect('Voice clip', node.data.voiceAssetId ?? '', soundAssets, (val) => {
+			this.#state.updateTimelineNode(scene.id, node.id, { data: { voiceAssetId: val || null } })
+		})
+	}
+
+	#renderExpressionNodeProps(node, scene) {
+		const header = document.createElement('h4')
+		header.textContent = 'Expression'
+		header.style.cssText = 'color: var(--accent); margin-bottom: 12px; font-size: 14px;'
+		this.#contentEl.appendChild(header)
+
+		this.#addGroup('Character name', 'text', node.data.name ?? '', (val) => {
+			this.#state.updateTimelineNode(scene.id, node.id, { data: { name: val } })
+		})
+
+		this.#addGroup('Expression', 'text', node.data.expression ?? '', (val) => {
+			this.#state.updateTimelineNode(scene.id, node.id, { data: { expression: val } })
+		})
+
+		// Expression asset override (optional)
+		const charAssets = this.#state.getAssetsByType('character')
+		this.#addSelect('Asset override', node.data.expressionAssetId ?? '', charAssets, (val) => {
+			this.#state.updateTimelineNode(scene.id, node.id, { data: { expressionAssetId: val || null } })
+		})
+
+		const hint = document.createElement('div')
+		hint.textContent = 'Changes the expression on an already-visible character. The expression name must match one defined on the showCharacter node, or use the asset override.'
+		hint.style.cssText = 'font-size: 11px; color: var(--text-secondary); margin-top: 8px; line-height: 1.4;'
+		this.#contentEl.appendChild(hint)
+	}
+
+	#renderBackgroundNodeProps(node, scene) {
+		const header = document.createElement('h4')
+		header.textContent = 'Background'
+		header.style.cssText = 'color: var(--accent); margin-bottom: 12px; font-size: 14px;'
+		this.#contentEl.appendChild(header)
+
+		const imageAssets = this.#state.getImageAssets()
+		this.#addSelect('Image', node.data.assetId ?? '', imageAssets, (val) => {
+			this.#state.updateTimelineNode(scene.id, node.id, { data: { assetId: val || null } })
+		})
+	}
+
+	#renderMusicNodeProps(node, scene) {
+		const header = document.createElement('h4')
+		header.textContent = 'Music'
+		header.style.cssText = 'color: var(--accent); margin-bottom: 12px; font-size: 14px;'
+		this.#contentEl.appendChild(header)
+
+		const actions = [
+			{ id: 'play', name: 'Play' },
+			{ id: 'stop', name: 'Stop' }
+		]
+		this.#addSelect('Action', node.data.action ?? 'play', actions, (val) => {
+			this.#state.updateTimelineNode(scene.id, node.id, { data: { action: val } })
+		})
+
+		if ((node.data.action ?? 'play') === 'play') {
+			const musicAssets = this.#state.getAssetsByType('music')
+			this.#addSelect('Track', node.data.assetId ?? '', musicAssets, (val) => {
+				this.#state.updateTimelineNode(scene.id, node.id, { data: { assetId: val || null } })
+			})
+
+			this.#addCheckbox('Loop', node.data.loop ?? true, (val) => {
+				this.#state.updateTimelineNode(scene.id, node.id, { data: { loop: val } })
+			})
+		}
+	}
+
+	#renderSoundNodeProps(node, scene) {
+		const header = document.createElement('h4')
+		header.textContent = 'Sound Effect'
+		header.style.cssText = 'color: var(--accent); margin-bottom: 12px; font-size: 14px;'
+		this.#contentEl.appendChild(header)
+
+		const soundAssets = this.#state.getAssetsByType('sound')
+		this.#addSelect('Audio', node.data.assetId ?? '', soundAssets, (val) => {
+			this.#state.updateTimelineNode(scene.id, node.id, { data: { assetId: val || null } })
+		})
+	}
+
+	#renderWaitNodeProps(node, scene) {
+		const header = document.createElement('h4')
+		header.textContent = 'Wait'
+		header.style.cssText = 'color: var(--accent); margin-bottom: 12px; font-size: 14px;'
+		this.#contentEl.appendChild(header)
+
+		this.#addGroup('Duration (ms)', 'number', node.data.duration ?? 1000, (val) => {
+			this.#state.updateTimelineNode(scene.id, node.id, { data: { duration: parseInt(val) || 1000 } })
+		}, { step: '100', min: '0' })
+	}
+
+	#renderChoiceNodeProps(node, scene) {
+		const header = document.createElement('h4')
+		header.textContent = 'Choice'
+		header.style.cssText = 'color: var(--accent); margin-bottom: 12px; font-size: 14px;'
+		this.#contentEl.appendChild(header)
+
+		const choices = node.data.choices ?? []
+		const allScenes = this.#state.scenes
+
+		for (let i = 0; i < choices.length; i++) {
+			const choice = choices[i]
+			const choiceRow = document.createElement('div')
+			choiceRow.style.cssText = 'border: 1px solid var(--border); border-radius: var(--radius); padding: 8px; margin-bottom: 8px;'
+
+			const choiceLabel = document.createElement('div')
+			choiceLabel.textContent = `Choice ${i + 1}`
+			choiceLabel.style.cssText = 'font-size: 11px; color: var(--text-secondary); margin-bottom: 4px; font-weight: 500;'
+			choiceRow.appendChild(choiceLabel)
+
+			// Choice text
+			const textInput = document.createElement('input')
+			textInput.type = 'text'
+			textInput.value = choice.text ?? ''
+			textInput.placeholder = 'Choice text'
+			textInput.style.cssText = 'width: 100%; padding: 4px 6px; font-size: 12px; margin-bottom: 4px; border: 1px solid var(--border-color); border-radius: var(--radius); background: var(--bg-dark); color: var(--text-primary); outline: none; box-sizing: border-box;'
+			const idx = i
+			textInput.addEventListener('change', () => {
+				const updated = [...(node.data.choices ?? [])]
+				updated[idx] = { ...updated[idx], text: textInput.value }
+				this.#state.updateTimelineNode(scene.id, node.id, { data: { choices: updated } })
+			})
+			choiceRow.appendChild(textInput)
+
+			// Target scene
+			const sceneSelect = document.createElement('select')
+			sceneSelect.style.cssText = 'width: 100%; padding: 4px 6px; font-size: 12px; margin-bottom: 4px; border: 1px solid var(--border-color); border-radius: var(--radius); background: var(--bg-dark); color: var(--text-primary); outline: none; box-sizing: border-box;'
+
+			const emptyOpt = document.createElement('option')
+			emptyOpt.value = ''
+			emptyOpt.textContent = '(no target)'
+			sceneSelect.appendChild(emptyOpt)
+
+			for (const s of allScenes) {
+				const opt = document.createElement('option')
+				opt.value = s.id
+				opt.textContent = s.id
+				if (s.id === choice.targetSceneId) opt.selected = true
+				sceneSelect.appendChild(opt)
+			}
+
+			sceneSelect.addEventListener('change', () => {
+				const updated = [...(node.data.choices ?? [])]
+				updated[idx] = { ...updated[idx], targetSceneId: sceneSelect.value || null }
+				this.#state.updateTimelineNode(scene.id, node.id, { data: { choices: updated } })
+			})
+			choiceRow.appendChild(sceneSelect)
+
+			// Remove choice button
+			const removeChoiceBtn = document.createElement('button')
+			removeChoiceBtn.textContent = 'Remove'
+			removeChoiceBtn.style.cssText = 'padding: 2px 8px; font-size: 11px; color: var(--danger); border-color: var(--danger); background: transparent; cursor: pointer;'
+			removeChoiceBtn.addEventListener('click', () => {
+				const updated = [...(node.data.choices ?? [])]
+				updated.splice(idx, 1)
+				this.#state.updateTimelineNode(scene.id, node.id, { data: { choices: updated } })
+			})
+			choiceRow.appendChild(removeChoiceBtn)
+
+			this.#contentEl.appendChild(choiceRow)
+		}
+
+		// Add choice button
+		const addChoiceBtn = document.createElement('button')
+		addChoiceBtn.textContent = '+ Add choice'
+		addChoiceBtn.style.cssText = 'width: 100%; font-size: 12px; margin-top: 4px;'
+		addChoiceBtn.addEventListener('click', () => {
+			const updated = [...(node.data.choices ?? []), { text: '', targetSceneId: null }]
+			this.#state.updateTimelineNode(scene.id, node.id, { data: { choices: updated } })
+		})
+		this.#contentEl.appendChild(addChoiceBtn)
 	}
 
 	// --- Asset preview ---

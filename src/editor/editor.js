@@ -3,7 +3,7 @@ import { EditorCanvas } from '../modules/editor/editorCanvas.js'
 import { AssetManagerPanel } from '../modules/editor/assetManagerPanel.js'
 import { SceneManagerPanel } from '../modules/editor/sceneManagerPanel.js'
 import { PropertiesPanel } from '../modules/editor/propertiesPanel.js'
-import { DialogueEditor } from '../modules/editor/dialogueEditor.js'
+import { TimelineEditor } from '../modules/editor/timelineEditor.js'
 import { ScriptSerializer } from '../modules/editor/scriptSerializer.js'
 import { PanelResizer } from '../modules/editor/panelResizer.js'
 import { EkakuConfig } from '../modules/ekakuConfig.js'
@@ -30,7 +30,7 @@ const editorCanvas = new EditorCanvas(state)
 const assetManager = new AssetManagerPanel(state)
 const sceneManager = new SceneManagerPanel(state)
 const propertiesPanel = new PropertiesPanel(state)
-const dialogueEditor = new DialogueEditor(state)
+const timelineEditor = new TimelineEditor(state)
 const serializer = new ScriptSerializer(state)
 
 // --- Toolbar buttons ---
@@ -178,14 +178,14 @@ document.addEventListener('keydown', (e) => {
 			state.selectElement(null)
 		}
 	} else if (e.key === 'Delete' || e.key === 'Backspace') {
-		// Delete selected character
+		// Delete selected timeline node
 		const selectedId = state.selectedElementId
 		const scene = state.currentScene
 		if (selectedId && scene) {
-			const char = scene.characters.find(c => c.id === selectedId)
-			if (char) {
+			const node = state.getTimelineNode(scene.id, selectedId)
+			if (node) {
 				e.preventDefault()
-				state.removeCharacter(scene.id, char.id)
+				state.removeTimelineNode(scene.id, node.id)
 			}
 		}
 	}

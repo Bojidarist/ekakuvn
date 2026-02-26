@@ -96,6 +96,11 @@ export class EditorState {
 			this.#project.meta.theme = null
 		}
 
+		// Migrate old-format scenes to timeline format
+		for (const scene of this.#project.scenes) {
+			this.#migrateScene(scene)
+		}
+
 		this.#currentSceneId = this.#project.startScene ?? this.#project.scenes[0]?.id ?? null
 		this.#selectedElementId = null
 		this.#undoStack = []
@@ -120,10 +125,7 @@ export class EditorState {
 		this.#pushUndo()
 		const scene = {
 			id: id ?? this.#generateId('scene'),
-			background: null,
-			music: null,
-			characters: [],
-			dialogue: [],
+			timeline: [],
 			choices: null,
 			next: null,
 			transition: { type: 'fade', duration: 0.5 }
@@ -158,6 +160,15 @@ export class EditorState {
 			if (scene.choices) {
 				scene.choices = scene.choices.filter(c => c.targetSceneId !== sceneId)
 				if (scene.choices.length === 0) scene.choices = null
+			}
+			// Clean up choice nodes in timeline that reference deleted scene
+			for (const node of scene.timeline) {
+				if (node.type === 'choice' && node.data.choices) {
+					node.data.choices = node.data.choices.filter(c => c.targetSceneId !== sceneId)
+					if (node.data.choices.length === 0) {
+						node.data.choices = [{ text: '', targetSceneId: null }]
+					}
+				}
 			}
 		}
 
@@ -203,55 +214,114 @@ export class EditorState {
 		this.#emit('sceneUpdated', { sceneId, key, value })
 	}
 
-	// --- Characters ---
+	// --- Timeline Nodes ---
 
-	addCharacter(sceneId, charData) {
+	#nodeDefaults = {
+		dialogue: { auto: false, data: { speaker: null, text: '', voiceAssetId: null } },
+		showCharacter: { auto: true, data: { assetId: null, position: { x: 0.5, y: 0.8 }, scale: 1.0, flipped: false, enterAnimation: { type: 'none', duration: 0.4, delay: 0 }, name: '', expressions: {} } },
+		hideCharacter: { auto: true, data: { name: '' } },
+		expression: { auto: true, data: { name: '', expression: '', expressionAssetId: null } },
+		background: { auto: true, data: { assetId: null } },
+		music: { auto: true, data: { assetId: null, loop: true, action: 'play' } },
+		sound: { auto: true, data: { assetId: null } },
+		wait: { auto: true, data: { duration: 1000 } },
+		choice: { auto: false, data: { choices: [{ text: '', targetSceneId: null }] } }
+	}
+
+	addTimelineNode(sceneId, node, insertIndex) {
 		const scene = this.#project.scenes.find(s => s.id === sceneId)
 		if (!scene) return null
 
+		const defaults = this.#nodeDefaults[node.type]
+		if (!defaults) return null
+
 		this.#pushUndo()
-		const character = {
-			id: this.#generateId('char'),
-			assetId: charData.assetId,
-			position: charData.position ?? { x: 0.5, y: 0.5 },
-			scale: charData.scale ?? 1.0,
-			flipped: charData.flipped ?? false,
-			enterAnimation: charData.enterAnimation ?? { type: 'none', duration: 0.4 },
-			expressions: charData.expressions ?? {}
+		const entry = {
+			id: this.#generateId('node'),
+			type: node.type,
+			auto: node.auto ?? defaults.auto,
+			delay: node.delay ?? 0,
+			data: structuredClone(node.data ?? defaults.data)
 		}
-		scene.characters.push(character)
+
+		if (insertIndex !== undefined && insertIndex >= 0 && insertIndex <= scene.timeline.length) {
+			scene.timeline.splice(insertIndex, 0, entry)
+		} else {
+			scene.timeline.push(entry)
+		}
+
 		this.#autoSave()
-		this.#emit('sceneUpdated', { sceneId, key: 'characters' })
-		return character
+		this.#emit('timelineChanged', sceneId)
+		return entry
 	}
 
-	removeCharacter(sceneId, characterId) {
+	updateTimelineNode(sceneId, nodeId, updates) {
+		const scene = this.#project.scenes.find(s => s.id === sceneId)
+		if (!scene) return
+
+		const node = scene.timeline.find(n => n.id === nodeId)
+		if (!node) return
+
+		this.#pushUndo()
+		if (updates.auto !== undefined) node.auto = updates.auto
+		if (updates.delay !== undefined) node.delay = updates.delay
+		if (updates.data) {
+			Object.assign(node.data, updates.data)
+		}
+		this.#autoSave()
+		this.#emit('timelineChanged', sceneId)
+	}
+
+	removeTimelineNode(sceneId, nodeId) {
 		const scene = this.#project.scenes.find(s => s.id === sceneId)
 		if (!scene) return
 
 		this.#pushUndo()
-		scene.characters = scene.characters.filter(c => c.id !== characterId)
+		scene.timeline = scene.timeline.filter(n => n.id !== nodeId)
 
-		if (this.#selectedElementId === characterId) {
+		if (this.#selectedElementId === nodeId) {
 			this.#selectedElementId = null
 			this.#emit('selectionChanged', null)
 		}
 
 		this.#autoSave()
-		this.#emit('sceneUpdated', { sceneId, key: 'characters' })
+		this.#emit('timelineChanged', sceneId)
 	}
 
-	updateCharacter(sceneId, characterId, updates) {
+	reorderTimelineNode(sceneId, fromIndex, toIndex) {
 		const scene = this.#project.scenes.find(s => s.id === sceneId)
 		if (!scene) return
 
-		const character = scene.characters.find(c => c.id === characterId)
-		if (!character) return
+		this.#pushUndo()
+		const [moved] = scene.timeline.splice(fromIndex, 1)
+		scene.timeline.splice(toIndex, 0, moved)
+		this.#autoSave()
+		this.#emit('timelineChanged', sceneId)
+	}
+
+	duplicateTimelineNode(sceneId, nodeId) {
+		const scene = this.#project.scenes.find(s => s.id === sceneId)
+		if (!scene) return null
+
+		const source = scene.timeline.find(n => n.id === nodeId)
+		if (!source) return null
 
 		this.#pushUndo()
-		Object.assign(character, updates)
+		const copy = structuredClone(source)
+		copy.id = this.#generateId('node')
+
+		const idx = scene.timeline.indexOf(source)
+		scene.timeline.splice(idx + 1, 0, copy)
+
 		this.#autoSave()
-		this.#emit('sceneUpdated', { sceneId, key: 'characters' })
+		this.#emit('timelineChanged', sceneId)
+		return copy
+	}
+
+	getTimelineNode(sceneId, nodeId) {
+		const scene = this.#project.scenes.find(s => s.id === sceneId)
+		if (!scene) return null
+		return scene.timeline.find(n => n.id === nodeId) ?? null
 	}
 
 	selectElement(elementId) {
@@ -259,64 +329,68 @@ export class EditorState {
 		this.#emit('selectionChanged', elementId)
 	}
 
-	// --- Dialogue ---
+	// --- Timeline State Computation ---
 
-	addDialogue(sceneId, entry) {
+	getActiveCharacters(sceneId, upToNodeIndex) {
 		const scene = this.#project.scenes.find(s => s.id === sceneId)
-		if (!scene) return
+		if (!scene) return new Map()
 
-		this.#pushUndo()
-		scene.dialogue.push({
-			speaker: entry.speaker ?? null,
-			text: entry.text ?? '',
-			expression: entry.expression ?? null,
-			voiceAssetId: entry.voiceAssetId ?? null
-		})
-		this.#autoSave()
-		this.#emit('dialogueChanged', sceneId)
+		const chars = new Map()
+		const limit = upToNodeIndex !== undefined ? upToNodeIndex + 1 : scene.timeline.length
+
+		for (let i = 0; i < limit && i < scene.timeline.length; i++) {
+			const node = scene.timeline[i]
+			if (node.type === 'showCharacter') {
+				chars.set(node.data.name, {
+					nodeId: node.id,
+					assetId: node.data.assetId,
+					position: { ...node.data.position },
+					scale: node.data.scale,
+					flipped: node.data.flipped,
+					enterAnimation: node.data.enterAnimation ? { ...node.data.enterAnimation } : null,
+					expressions: node.data.expressions ? { ...node.data.expressions } : {},
+					currentExpression: null
+				})
+			} else if (node.type === 'hideCharacter') {
+				chars.delete(node.data.name)
+			} else if (node.type === 'expression') {
+				const char = chars.get(node.data.name)
+				if (char) {
+					char.currentExpression = node.data.expression
+				}
+			}
+		}
+
+		return chars
 	}
 
-	updateDialogue(sceneId, index, updates) {
+	getActiveBackground(sceneId, upToNodeIndex) {
 		const scene = this.#project.scenes.find(s => s.id === sceneId)
-		if (!scene || !scene.dialogue[index]) return
+		if (!scene) return null
 
-		this.#pushUndo()
-		Object.assign(scene.dialogue[index], updates)
-		this.#autoSave()
-		this.#emit('dialogueChanged', sceneId)
+		const limit = upToNodeIndex !== undefined ? upToNodeIndex + 1 : scene.timeline.length
+		let bgAssetId = null
+
+		for (let i = 0; i < limit && i < scene.timeline.length; i++) {
+			const node = scene.timeline[i]
+			if (node.type === 'background') {
+				bgAssetId = node.data.assetId
+			}
+		}
+
+		return bgAssetId
 	}
 
-	removeDialogue(sceneId, index) {
-		const scene = this.#project.scenes.find(s => s.id === sceneId)
-		if (!scene) return
-
-		this.#pushUndo()
-		scene.dialogue.splice(index, 1)
-		this.#autoSave()
-		this.#emit('dialogueChanged', sceneId)
-	}
-
-	reorderDialogue(sceneId, fromIndex, toIndex) {
-		const scene = this.#project.scenes.find(s => s.id === sceneId)
-		if (!scene) return
-
-		this.#pushUndo()
-		const [moved] = scene.dialogue.splice(fromIndex, 1)
-		scene.dialogue.splice(toIndex, 0, moved)
-		this.#autoSave()
-		this.#emit('dialogueChanged', sceneId)
-	}
-
-	// --- Choices ---
+	// --- Expressions (timeline-aware) ---
 
 	getSceneExpressions(sceneId) {
 		const scene = this.#project.scenes.find(s => s.id === sceneId)
 		if (!scene) return []
 
 		const expressions = new Set()
-		for (const char of scene.characters) {
-			if (char.expressions) {
-				for (const name of Object.keys(char.expressions)) {
+		for (const node of scene.timeline) {
+			if (node.type === 'showCharacter' && node.data.expressions) {
+				for (const name of Object.keys(node.data.expressions)) {
 					expressions.add(name)
 				}
 			}
@@ -324,41 +398,43 @@ export class EditorState {
 		return [...expressions].sort()
 	}
 
-	getCharacterExpressions(sceneId, characterId) {
+	getCharacterExpressions(sceneId, nodeId) {
 		const scene = this.#project.scenes.find(s => s.id === sceneId)
 		if (!scene) return []
 
-		const char = scene.characters.find(c => c.id === characterId)
-		if (!char || !char.expressions) return []
-		return Object.keys(char.expressions).sort()
+		const node = scene.timeline.find(n => n.id === nodeId)
+		if (!node || node.type !== 'showCharacter' || !node.data.expressions) return []
+		return Object.keys(node.data.expressions).sort()
 	}
 
-	addCharacterExpression(sceneId, characterId, name, assetId) {
+	addCharacterExpression(sceneId, nodeId, name, assetId) {
 		const scene = this.#project.scenes.find(s => s.id === sceneId)
 		if (!scene) return
 
-		const char = scene.characters.find(c => c.id === characterId)
-		if (!char) return
+		const node = scene.timeline.find(n => n.id === nodeId)
+		if (!node || node.type !== 'showCharacter') return
 
 		this.#pushUndo()
-		if (!char.expressions) char.expressions = {}
-		char.expressions[name] = assetId
+		if (!node.data.expressions) node.data.expressions = {}
+		node.data.expressions[name] = assetId
 		this.#autoSave()
-		this.#emit('sceneUpdated', { sceneId, key: 'characters' })
+		this.#emit('timelineChanged', sceneId)
 	}
 
-	removeCharacterExpression(sceneId, characterId, name) {
+	removeCharacterExpression(sceneId, nodeId, name) {
 		const scene = this.#project.scenes.find(s => s.id === sceneId)
 		if (!scene) return
 
-		const char = scene.characters.find(c => c.id === characterId)
-		if (!char || !char.expressions) return
+		const node = scene.timeline.find(n => n.id === nodeId)
+		if (!node || node.type !== 'showCharacter' || !node.data.expressions) return
 
 		this.#pushUndo()
-		delete char.expressions[name]
+		delete node.data.expressions[name]
 		this.#autoSave()
-		this.#emit('sceneUpdated', { sceneId, key: 'characters' })
+		this.#emit('timelineChanged', sceneId)
 	}
+
+	// --- Choices (scene-level, for end-of-timeline branching) ---
 
 	addChoice(sceneId, choice) {
 		const scene = this.#project.scenes.find(s => s.id === sceneId)
@@ -370,9 +446,9 @@ export class EditorState {
 			text: choice.text ?? '',
 			targetSceneId: choice.targetSceneId ?? null
 		})
-		scene.next = null // choices and next are mutually exclusive
+		scene.next = null
 		this.#autoSave()
-		this.#emit('dialogueChanged', sceneId)
+		this.#emit('timelineChanged', sceneId)
 	}
 
 	updateChoice(sceneId, index, updates) {
@@ -382,7 +458,7 @@ export class EditorState {
 		this.#pushUndo()
 		Object.assign(scene.choices[index], updates)
 		this.#autoSave()
-		this.#emit('dialogueChanged', sceneId)
+		this.#emit('timelineChanged', sceneId)
 	}
 
 	removeChoice(sceneId, index) {
@@ -393,7 +469,7 @@ export class EditorState {
 		scene.choices.splice(index, 1)
 		if (scene.choices.length === 0) scene.choices = null
 		this.#autoSave()
-		this.#emit('dialogueChanged', sceneId)
+		this.#emit('timelineChanged', sceneId)
 	}
 
 	// --- Assets ---
@@ -418,18 +494,22 @@ export class EditorState {
 		this.#pushUndo()
 		this.#project.assets = this.#project.assets.filter(a => a.id !== assetId)
 
-		// Clean up references
+		// Clean up timeline node references to deleted asset
 		for (const scene of this.#project.scenes) {
-			if (scene.background === assetId) scene.background = null
-			if (scene.music?.assetId === assetId) scene.music = null
-			scene.characters = scene.characters.filter(c => c.assetId !== assetId)
+			scene.timeline = scene.timeline.filter(node => {
+				if (node.type === 'background' && node.data.assetId === assetId) return false
+				if (node.type === 'music' && node.data.assetId === assetId) return false
+				if (node.type === 'sound' && node.data.assetId === assetId) return false
+				if (node.type === 'showCharacter' && node.data.assetId === assetId) return false
+				return true
+			})
 
-			// Clean up expression references to deleted asset
-			for (const char of scene.characters) {
-				if (char.expressions) {
-					for (const [name, exprAssetId] of Object.entries(char.expressions)) {
+			// Clean up expression references within remaining showCharacter nodes
+			for (const node of scene.timeline) {
+				if (node.type === 'showCharacter' && node.data.expressions) {
+					for (const [name, exprAssetId] of Object.entries(node.data.expressions)) {
 						if (exprAssetId === assetId) {
-							delete char.expressions[name]
+							delete node.data.expressions[name]
 						}
 					}
 				}
@@ -601,31 +681,36 @@ export class EditorState {
 		for (const asset of script.assets) {
 			delete asset.name
 			delete asset.folderId
-			// If asset uses dataUrl, keep path pointing to it
 		}
 
 		// Remove folders (editor-only organization)
 		delete script.folders
 
-		// Remove character editor IDs (runtime doesn't need them)
+		// Serialize timeline nodes: flatten data into node, strip id
 		for (const scene of script.scenes) {
-			scene.characters = scene.characters.map(c => {
+			scene.timeline = scene.timeline.map(node => {
 				const exported = {
-					assetId: c.assetId,
-					position: c.position,
-					scale: c.scale,
-					flipped: c.flipped
+					type: node.type,
+					auto: node.auto,
+					delay: node.delay,
+					...node.data
 				}
-				// Only include enterAnimation if it's not 'none'
-				if (c.enterAnimation && c.enterAnimation.type !== 'none') {
-					exported.enterAnimation = c.enterAnimation
+
+				// Strip expressions from showCharacter if empty
+				if (node.type === 'showCharacter') {
+					if (exported.expressions && Object.keys(exported.expressions).length === 0) {
+						delete exported.expressions
+					}
+					// Only include enterAnimation if not 'none'
+					if (exported.enterAnimation && exported.enterAnimation.type === 'none') {
+						delete exported.enterAnimation
+					}
 				}
-				// Only include expressions if non-empty
-				if (c.expressions && Object.keys(c.expressions).length > 0) {
-					exported.expressions = c.expressions
-				}
+
 				return exported
 			})
+
+			// If scene has choices at scene level, keep them; choice nodes in timeline are self-contained
 		}
 
 		// Clean up mainMenu -- only include if it has non-null values
@@ -662,6 +747,10 @@ export class EditorState {
 				// Ensure theme field exists (null = use defaults)
 				if (this.#project.meta.theme === undefined) {
 					this.#project.meta.theme = null
+				}
+				// Migrate old-format scenes to timeline format
+				for (const scene of this.#project.scenes) {
+					this.#migrateScene(scene)
 				}
 				this.#currentSceneId = this.#project.startScene ?? this.#project.scenes[0]?.id ?? null
 				return true
@@ -713,5 +802,114 @@ export class EditorState {
 
 	#generateId(prefix) {
 		return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
+	}
+
+	#migrateScene(scene) {
+		// Only migrate if scene has old format (dialogue array instead of timeline)
+		if (scene.timeline) return
+		if (!Array.isArray(scene.dialogue)) return
+
+		const timeline = []
+		const genId = () => this.#generateId('node')
+
+		// 1. Background node
+		if (scene.background) {
+			timeline.push({
+				id: genId(),
+				type: 'background',
+				auto: true,
+				delay: 0,
+				data: { assetId: scene.background }
+			})
+		}
+
+		// 2. Music node
+		if (scene.music) {
+			timeline.push({
+				id: genId(),
+				type: 'music',
+				auto: true,
+				delay: 0,
+				data: {
+					assetId: scene.music.assetId ?? scene.music,
+					loop: scene.music.loop ?? true,
+					action: 'play'
+				}
+			})
+		}
+
+		// 3. Character nodes
+		if (Array.isArray(scene.characters)) {
+			for (const char of scene.characters) {
+				timeline.push({
+					id: genId(),
+					type: 'showCharacter',
+					auto: true,
+					delay: 0,
+					data: {
+						assetId: char.assetId,
+						position: char.position ?? { x: 0.5, y: 0.8 },
+						scale: char.scale ?? 1.0,
+						flipped: char.flipped ?? false,
+						enterAnimation: char.enterAnimation ?? { type: 'none', duration: 0.4, delay: 0 },
+						name: char.name ?? '',
+						expressions: char.expressions ?? {}
+					}
+				})
+			}
+		}
+
+		// 4. Dialogue lines (with expression nodes inserted before if present)
+		for (const line of scene.dialogue) {
+			if (line.expression) {
+				timeline.push({
+					id: genId(),
+					type: 'expression',
+					auto: true,
+					delay: 0,
+					data: {
+						name: line.speaker ?? '',
+						expression: line.expression,
+						expressionAssetId: null
+					}
+				})
+			}
+
+			timeline.push({
+				id: genId(),
+				type: 'dialogue',
+				auto: false,
+				delay: 0,
+				data: {
+					speaker: line.speaker ?? null,
+					text: line.text ?? '',
+					voiceAssetId: line.voiceAssetId ?? null
+				}
+			})
+		}
+
+		// 5. Choices (convert scene-level choices to choice node)
+		if (Array.isArray(scene.choices) && scene.choices.length > 0) {
+			timeline.push({
+				id: genId(),
+				type: 'choice',
+				auto: false,
+				delay: 0,
+				data: {
+					choices: scene.choices.map(c => ({
+						text: c.text ?? '',
+						targetSceneId: c.targetSceneId ?? null
+					}))
+				}
+			})
+			scene.choices = null
+		}
+
+		// Apply migration
+		scene.timeline = timeline
+		delete scene.background
+		delete scene.music
+		delete scene.characters
+		delete scene.dialogue
 	}
 }

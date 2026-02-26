@@ -4,11 +4,16 @@ export class EditorCanvas {
 	#state = null
 	#renderer = null
 	#canvas = null
-	#dragging = null // { characterId, offsetX, offsetY }
-	#resizing = null // { characterId, handle, startX, startY, startScale, anchorX, anchorY }
+	#dragging = null // { nodeId, charName, offsetX, offsetY }
+	#resizing = null // { nodeId, charName, handle, startX, startY, startScale, anchorX, anchorY }
 	#loadedImages = new Map()
-	#dialoguePreview = null // { speaker, text } or null
+	#previewNodeIndex = null // index in timeline, or null for full scene
 	#textboxVisible = true
+
+	// Cached computed state (recalculated on preview/scene change)
+	#activeChars = new Map()   // Map<name, { nodeId, assetId, position, scale, flipped, expressions, currentExpression }>
+	#activeBgAssetId = null
+	#activeDialogue = null     // { speaker, text } or null
 
 	constructor(state) {
 		this.#state = state
@@ -41,17 +46,24 @@ export class EditorCanvas {
 		this.#canvas.addEventListener('drop', (e) => this.#onDrop(e))
 
 		// Listen for state changes
-		this.#state.on('sceneChanged', () => this.#preloadSceneImages())
-		this.#state.on('sceneUpdated', () => this.#preloadSceneImages())
-		this.#state.on('assetsChanged', () => this.#preloadSceneImages())
-		this.#state.on('projectChanged', () => this.#preloadSceneImages())
-
-		this.#preloadSceneImages()
-
-		// Listen for dialogue preview changes
-		this.#state.on('dialoguePreviewChanged', (data) => {
-			this.#dialoguePreview = data
+		this.#state.on('sceneChanged', () => {
+			this.#previewNodeIndex = null
+			this.#recomputeState()
 		})
+		this.#state.on('timelineChanged', () => this.#recomputeState())
+		this.#state.on('assetsChanged', () => this.#preloadSceneImages())
+		this.#state.on('projectChanged', () => {
+			this.#previewNodeIndex = null
+			this.#recomputeState()
+		})
+
+		// Listen for timeline preview changes (emitted by TimelineEditor)
+		this.#state.on('timelinePreviewChanged', (nodeIndex) => {
+			this.#previewNodeIndex = nodeIndex
+			this.#recomputeState()
+		})
+
+		this.#recomputeState()
 	}
 
 	get renderer() {
@@ -66,17 +78,51 @@ export class EditorCanvas {
 		this.#textboxVisible = visible
 	}
 
-	#preloadSceneImages() {
-		const scene = this.#state.currentScene
-		if (!scene) return
+	// --- Timeline state computation ---
 
-		// Preload background
-		if (scene.background) {
-			this.#ensureImage(scene.background)
+	#recomputeState() {
+		const scene = this.#state.currentScene
+		if (!scene) {
+			this.#activeChars = new Map()
+			this.#activeBgAssetId = null
+			this.#activeDialogue = null
+			return
 		}
 
-		// Preload characters and their expressions
-		for (const char of scene.characters) {
+		const idx = this.#previewNodeIndex
+		this.#activeChars = this.#state.getActiveCharacters(scene.id, idx)
+		this.#activeBgAssetId = this.#state.getActiveBackground(scene.id, idx)
+		this.#activeDialogue = this.#getActiveDialogue(scene, idx)
+
+		this.#preloadSceneImages()
+	}
+
+	#getActiveDialogue(scene, upToIndex) {
+		if (!scene.timeline || scene.timeline.length === 0) return null
+
+		const limit = upToIndex !== undefined ? upToIndex + 1 : scene.timeline.length
+		let dialogue = null
+
+		for (let i = 0; i < limit && i < scene.timeline.length; i++) {
+			const node = scene.timeline[i]
+			if (node.type === 'dialogue') {
+				dialogue = { speaker: node.data.speaker, text: node.data.text }
+			}
+		}
+
+		return dialogue
+	}
+
+	// --- Image preloading ---
+
+	#preloadSceneImages() {
+		// Preload background
+		if (this.#activeBgAssetId) {
+			this.#ensureImage(this.#activeBgAssetId)
+		}
+
+		// Preload all character assets and their expressions
+		for (const [, char] of this.#activeChars) {
 			this.#ensureImage(char.assetId)
 			if (char.expressions) {
 				for (const exprAssetId of Object.values(char.expressions)) {
@@ -87,6 +133,7 @@ export class EditorCanvas {
 	}
 
 	#ensureImage(assetId) {
+		if (!assetId) return
 		if (this.#loadedImages.has(assetId)) return
 
 		const asset = this.#state.assets.find(a => a.id === assetId)
@@ -104,6 +151,8 @@ export class EditorCanvas {
 		return null
 	}
 
+	// --- Drawing ---
+
 	#drawBackground(renderer) {
 		const scene = this.#state.currentScene
 		if (!scene) {
@@ -116,8 +165,8 @@ export class EditorCanvas {
 			return
 		}
 
-		if (scene.background) {
-			const img = this.#getImage(scene.background)
+		if (this.#activeBgAssetId) {
+			const img = this.#getImage(this.#activeBgAssetId)
 			if (img) {
 				renderer.drawImage(img, 0, 0, renderer.width, renderer.height)
 				return
@@ -132,23 +181,11 @@ export class EditorCanvas {
 		const scene = this.#state.currentScene
 		if (!scene) return
 
-		// Determine active expression from dialogue preview
-		const preview = this.#dialoguePreview
-		const activeExpression = preview?.expression ?? null
-		const activeSpeaker = preview?.speaker ?? null
-
-		for (const char of scene.characters) {
+		for (const [, char] of this.#activeChars) {
 			// Resolve which image to display: expression override or default
 			let displayAssetId = char.assetId
-			if (activeExpression && char.expressions && char.expressions[activeExpression]) {
-				// If the dialogue line's speaker matches one of the character asset names,
-				// or if there's only one character, apply the expression
-				const asset = this.#state.assets.find(a => a.id === char.assetId)
-				const charName = asset ? (asset.name ?? asset.id) : char.assetId
-				if (scene.characters.length === 1 ||
-					(activeSpeaker && charName.toLowerCase() === activeSpeaker.toLowerCase())) {
-					displayAssetId = char.expressions[activeExpression]
-				}
+			if (char.currentExpression && char.expressions && char.expressions[char.currentExpression]) {
+				displayAssetId = char.expressions[char.currentExpression]
 			}
 
 			const img = this.#getImage(displayAssetId)
@@ -182,7 +219,8 @@ export class EditorCanvas {
 		const scene = this.#state.currentScene
 		if (!scene) return
 
-		const char = scene.characters.find(c => c.id === selectedId)
+		// Find the selected character in active chars (selected by nodeId)
+		const char = this.#findCharByNodeId(selectedId)
 		if (!char) return
 
 		const img = this.#getImage(char.assetId)
@@ -213,7 +251,7 @@ export class EditorCanvas {
 		}
 
 		// Scale tooltip during resize
-		if (this.#resizing && this.#resizing.characterId === selectedId) {
+		if (this.#resizing && this.#resizing.nodeId === selectedId) {
 			const pct = Math.round(scale * 100)
 			const ctx = renderer.context
 			ctx.save()
@@ -232,9 +270,7 @@ export class EditorCanvas {
 
 	#drawTextbox(renderer) {
 		if (!this.#textboxVisible) return
-
-		const preview = this.#dialoguePreview
-		if (!preview) return
+		if (!this.#activeDialogue) return
 
 		const w = renderer.width
 		const h = renderer.height
@@ -269,8 +305,8 @@ export class EditorCanvas {
 		const primaryColor = colors.primary ?? '#ffffff'
 
 		// Draw speaker name
-		if (preview.speaker) {
-			renderer.drawText(preview.speaker, textX, textY, {
+		if (this.#activeDialogue.speaker) {
+			renderer.drawText(this.#activeDialogue.speaker, textX, textY, {
 				font: dialogue.speakerFont ?? `bold ${speakerSize}px ${fontFamily}`,
 				color: dialogue.speakerColor ?? accentColor
 			})
@@ -278,8 +314,8 @@ export class EditorCanvas {
 		}
 
 		// Draw dialogue text
-		if (preview.text) {
-			renderer.drawText(preview.text, textX, textY, {
+		if (this.#activeDialogue.text) {
+			renderer.drawText(this.#activeDialogue.text, textX, textY, {
 				font: dialogue.textFont ?? `${textSize}px ${fontFamily}`,
 				color: dialogue.textColor ?? primaryColor,
 				maxWidth: boxW - boxPadding * 2,
@@ -287,6 +323,21 @@ export class EditorCanvas {
 			})
 		}
 	}
+
+	// --- Character lookup helpers ---
+
+	#findCharByNodeId(nodeId) {
+		for (const [, char] of this.#activeChars) {
+			if (char.nodeId === nodeId) return char
+		}
+		return null
+	}
+
+	#findCharByName(name) {
+		return this.#activeChars.get(name) ?? null
+	}
+
+	// --- Selection / handle geometry ---
 
 	#getHandlePositions(drawX, drawY, drawW, drawH, handleSize) {
 		return [
@@ -301,10 +352,7 @@ export class EditorCanvas {
 		const selectedId = this.#state.selectedElementId
 		if (!selectedId) return null
 
-		const scene = this.#state.currentScene
-		if (!scene) return null
-
-		const char = scene.characters.find(c => c.id === selectedId)
+		const char = this.#findCharByNodeId(selectedId)
 		if (!char) return null
 
 		const img = this.#getImage(char.assetId)
@@ -317,7 +365,7 @@ export class EditorCanvas {
 		const drawY = char.position.y * this.#renderer.height - drawH
 
 		const handleSize = 8
-		const hitPad = 4 // extra hit area around handles
+		const hitPad = 4
 		const corners = this.#getHandlePositions(drawX, drawY, drawW, drawH, handleSize)
 		const handleNames = ['top-left', 'top-right', 'bottom-left', 'bottom-right']
 
@@ -327,7 +375,8 @@ export class EditorCanvas {
 				canvasY >= cy - hitPad && canvasY <= cy + handleSize + hitPad) {
 				return {
 					handle: handleNames[i],
-					characterId: char.id,
+					nodeId: char.nodeId,
+					charName: null, // filled below
 					drawX, drawY, drawW, drawH
 				}
 			}
@@ -352,12 +401,10 @@ export class EditorCanvas {
 	}
 
 	#hitTestCharacter(canvasX, canvasY) {
-		const scene = this.#state.currentScene
-		if (!scene) return null
-
-		// Test in reverse order (top-most first)
-		for (let i = scene.characters.length - 1; i >= 0; i--) {
-			const char = scene.characters[i]
+		// Convert active chars Map to array for reverse iteration (top-most first)
+		const entries = [...this.#activeChars.entries()]
+		for (let i = entries.length - 1; i >= 0; i--) {
+			const [name, char] = entries[i]
 			const img = this.#getImage(char.assetId)
 			if (!img) continue
 
@@ -369,12 +416,14 @@ export class EditorCanvas {
 
 			if (canvasX >= drawX && canvasX <= drawX + drawW &&
 				canvasY >= drawY && canvasY <= drawY + drawH) {
-				return { character: char, offsetX: canvasX - drawX, offsetY: canvasY - drawY }
+				return { nodeId: char.nodeId, charName: name, offsetX: canvasX - drawX, offsetY: canvasY - drawY }
 			}
 		}
 
 		return null
 	}
+
+	// --- Mouse interaction ---
 
 	#onMouseDown(e) {
 		const pos = this.#getCanvasPosition(e)
@@ -382,9 +431,7 @@ export class EditorCanvas {
 		// Check resize handles first (only on currently selected character)
 		const handleHit = this.#hitTestHandle(pos.x, pos.y)
 		if (handleHit) {
-			const scene = this.#state.currentScene
-			if (!scene) return
-			const char = scene.characters.find(c => c.id === handleHit.characterId)
+			const char = this.#findCharByNodeId(handleHit.nodeId)
 			if (!char) return
 			const img = this.#getImage(char.assetId)
 			if (!img) return
@@ -405,7 +452,7 @@ export class EditorCanvas {
 			}
 
 			this.#resizing = {
-				characterId: handleHit.characterId,
+				nodeId: handleHit.nodeId,
 				handle: handleHit.handle,
 				startX: pos.x,
 				startY: pos.y,
@@ -424,9 +471,10 @@ export class EditorCanvas {
 		const hit = this.#hitTestCharacter(pos.x, pos.y)
 
 		if (hit) {
-			this.#state.selectElement(hit.character.id)
+			this.#state.selectElement(hit.nodeId)
 			this.#dragging = {
-				characterId: hit.character.id,
+				nodeId: hit.nodeId,
+				charName: hit.charName,
 				offsetX: hit.offsetX,
 				offsetY: hit.offsetY
 			}
@@ -438,17 +486,13 @@ export class EditorCanvas {
 		// Handle resize drag
 		if (this.#resizing) {
 			const pos = this.#getCanvasPosition(e)
-			const scene = this.#state.currentScene
-			if (!scene) return
-			const char = scene.characters.find(c => c.id === this.#resizing.characterId)
+			const char = this.#findCharByNodeId(this.#resizing.nodeId)
 			if (!char) return
 
 			const r = this.#resizing
-			// Distance from anchor to current mouse
 			const curDist = Math.sqrt(
 				Math.pow(pos.x - r.anchorX, 2) + Math.pow(pos.y - r.anchorY, 2)
 			)
-			// Distance from anchor to start mouse
 			const startDist = Math.sqrt(
 				Math.pow(r.startX - r.anchorX, 2) + Math.pow(r.startY - r.anchorY, 2)
 			)
@@ -456,36 +500,28 @@ export class EditorCanvas {
 			if (startDist > 0) {
 				let newScale = r.startScale * (curDist / startDist)
 				newScale = Math.max(0.05, Math.min(5, newScale))
+
+				// We update the local cached char for live visual feedback
 				char.scale = newScale
 
-				// Reposition so the anchor corner stays fixed.
-				// Characters are drawn with:
-				//   drawX = position.x * width - drawW / 2
-				//   drawY = position.y * height - drawH
-				// So: position.x = (drawX + drawW / 2) / width
-				//     position.y = (drawY + drawH) / height
 				const newW = r.imgW * newScale
 				const newH = r.imgH * newScale
 
 				let newDrawX, newDrawY
 				switch (r.handle) {
 					case 'top-left':
-						// anchor is bottom-right, so bottom-right stays fixed
 						newDrawX = r.anchorX - newW
 						newDrawY = r.anchorY - newH
 						break
 					case 'top-right':
-						// anchor is bottom-left
 						newDrawX = r.anchorX
 						newDrawY = r.anchorY - newH
 						break
 					case 'bottom-left':
-						// anchor is top-right
 						newDrawX = r.anchorX - newW
 						newDrawY = r.anchorY
 						break
 					case 'bottom-right':
-						// anchor is top-left
 						newDrawX = r.anchorX
 						newDrawY = r.anchorY
 						break
@@ -500,7 +536,6 @@ export class EditorCanvas {
 		}
 
 		if (!this.#dragging) {
-			// Update cursor based on hover (handles first, then characters)
 			const pos = this.#getCanvasPosition(e)
 			const handleHit = this.#hitTestHandle(pos.x, pos.y)
 			if (handleHit) {
@@ -513,10 +548,7 @@ export class EditorCanvas {
 		}
 
 		const pos = this.#getCanvasPosition(e)
-		const scene = this.#state.currentScene
-		if (!scene) return
-
-		const char = scene.characters.find(c => c.id === this.#dragging.characterId)
+		const char = this.#findCharByNodeId(this.#dragging.nodeId)
 		if (!char) return
 
 		const img = this.#getImage(char.assetId)
@@ -526,11 +558,10 @@ export class EditorCanvas {
 		const drawW = img.naturalWidth * scale
 		const drawH = img.naturalHeight * scale
 
-		// Convert back to normalized coordinates
 		const newX = (pos.x - this.#dragging.offsetX + drawW / 2) / this.#renderer.width
 		const newY = (pos.y - this.#dragging.offsetY + drawH) / this.#renderer.height
 
-		// Clamp to canvas
+		// Update local cached char for live visual feedback
 		char.position.x = Math.max(0, Math.min(1, newX))
 		char.position.y = Math.max(0, Math.min(1, newY))
 	}
@@ -539,11 +570,13 @@ export class EditorCanvas {
 		if (this.#resizing) {
 			const scene = this.#state.currentScene
 			if (scene) {
-				const char = scene.characters.find(c => c.id === this.#resizing.characterId)
+				const char = this.#findCharByNodeId(this.#resizing.nodeId)
 				if (char) {
-					this.#state.updateCharacter(scene.id, char.id, {
-						scale: char.scale,
-						position: { ...char.position }
+					this.#state.updateTimelineNode(scene.id, this.#resizing.nodeId, {
+						data: {
+							scale: char.scale,
+							position: { ...char.position }
+						}
 					})
 				}
 			}
@@ -555,10 +588,12 @@ export class EditorCanvas {
 		if (this.#dragging) {
 			const scene = this.#state.currentScene
 			if (scene) {
-				const char = scene.characters.find(c => c.id === this.#dragging.characterId)
+				const char = this.#findCharByNodeId(this.#dragging.nodeId)
 				if (char) {
-					this.#state.updateCharacter(scene.id, char.id, {
-						position: { ...char.position }
+					this.#state.updateTimelineNode(scene.id, this.#dragging.nodeId, {
+						data: {
+							position: { ...char.position }
+						}
 					})
 				}
 			}
@@ -574,7 +609,7 @@ export class EditorCanvas {
 		const hit = this.#hitTestCharacter(pos.x, pos.y)
 
 		if (hit) {
-			this.#state.selectElement(hit.character.id)
+			this.#state.selectElement(hit.nodeId)
 		} else {
 			this.#state.selectElement(null)
 		}
@@ -593,19 +628,31 @@ export class EditorCanvas {
 			const pos = this.#getCanvasPosition(e)
 
 			if (assetType === 'character') {
-				const char = this.#state.addCharacter(scene.id, {
-					assetId,
-					position: {
-						x: pos.x / this.#renderer.width,
-						y: pos.y / this.#renderer.height
+				// Look up asset name for the character name field
+				const asset = this.#state.assets.find(a => a.id === assetId)
+				const name = asset ? (asset.name ?? asset.id) : assetId
+
+				this.#state.addTimelineNode(scene.id, {
+					type: 'showCharacter',
+					auto: true,
+					data: {
+						name,
+						assetId,
+						position: {
+							x: pos.x / this.#renderer.width,
+							y: pos.y / this.#renderer.height
+						},
+						scale: 1.0,
+						flipped: false
 					}
 				})
-				if (char) {
-					this.#ensureImage(assetId)
-					this.#state.selectElement(char.id)
-				}
+				this.#ensureImage(assetId)
 			} else if (assetType === 'background') {
-				this.#state.updateScene(scene.id, 'background', assetId)
+				this.#state.addTimelineNode(scene.id, {
+					type: 'background',
+					auto: true,
+					data: { assetId }
+				})
 				this.#ensureImage(assetId)
 			}
 		} catch {
