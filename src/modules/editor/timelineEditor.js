@@ -297,7 +297,7 @@ export class TimelineEditor {
 			const updates = {
 				auto: autoCheck.checked,
 				delay: Math.max(0, parseInt(delayInput.value) || 0),
-				data: this.#collectEditFields(node.type, fieldsContainer)
+				data: this.#collectEditFields(node.type, fieldsContainer, node.data)
 			}
 			this.#state.updateTimelineNode(scene.id, node.id, updates)
 			this.#selectedNodeId = node.id
@@ -612,7 +612,7 @@ export class TimelineEditor {
 
 	// --- Collect edit values ---
 
-	#collectEditFields(type, container) {
+	#collectEditFields(type, container, originalData = {}) {
 		const get = (field) => container.querySelector(`[data-field="${field}"]`)
 		const val = (field) => get(field)?.value ?? ''
 		const num = (field) => parseFloat(val(field)) || 0
@@ -628,7 +628,10 @@ export class TimelineEditor {
 					assetId: val('assetId') || null,
 					position: { x: num('posX'), y: num('posY') },
 					scale: num('scale') || 1.0,
-					flipped: checked('flipped')
+					flipped: checked('flipped'),
+					// Preserve expressions and enterAnimation that are not editable in timeline
+					expressions: originalData.expressions ?? {},
+					enterAnimation: originalData.enterAnimation ?? { type: 'none', duration: 0.4, delay: 0 }
 				}
 
 			case 'hideCharacter':
