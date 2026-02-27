@@ -239,7 +239,7 @@ export class TimelineEditor {
 		})
 		row.addEventListener('dragover', (e) => {
 			e.preventDefault()
-			e.dataTransfer.dropEffect = 'move'
+			e.stopPropagation()
 			row.style.borderTop = '2px solid var(--accent)'
 		})
 		row.addEventListener('dragleave', () => {

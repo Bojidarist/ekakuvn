@@ -205,7 +205,8 @@ export class EditorState {
 	reorderScenes(fromIndex, toIndex) {
 		this.#pushUndo()
 		const [moved] = this.#project.scenes.splice(fromIndex, 1)
-		this.#project.scenes.splice(toIndex, 0, moved)
+		const adjustedIndex = fromIndex < toIndex ? toIndex - 1 : toIndex
+		this.#project.scenes.splice(adjustedIndex, 0, moved)
 		this.#autoSave()
 		this.#emit('scenesChanged', this.#project.scenes)
 	}
@@ -416,7 +417,8 @@ export class EditorState {
 
 		this.#pushUndo()
 		const [moved] = scene.timeline.splice(fromIndex, 1)
-		scene.timeline.splice(toIndex, 0, moved)
+		const adjustedIndex = fromIndex < toIndex ? toIndex - 1 : toIndex
+		scene.timeline.splice(adjustedIndex, 0, moved)
 		this.#autoSave()
 		this.#emit('timelineChanged', sceneId)
 	}
