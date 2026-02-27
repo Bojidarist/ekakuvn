@@ -1,4 +1,5 @@
 import { Renderer } from './renderer.js'
+import { getCanvasPosition } from '../shared/canvasUtils.js'
 
 export class DialogueBox {
 	#renderer = null
@@ -282,16 +283,6 @@ export class DialogueBox {
 		return -1
 	}
 
-	#getCanvasPosition(event) {
-		const rect = this.#renderer.canvas.getBoundingClientRect()
-		const scaleX = this.#renderer.width / rect.width
-		const scaleY = this.#renderer.height / rect.height
-		return {
-			x: (event.clientX - rect.left) * scaleX,
-			y: (event.clientY - rect.top) * scaleY
-		}
-	}
-
 	#onClick(event) {
 		if (this.paused) return
 
@@ -313,7 +304,7 @@ export class DialogueBox {
 		}
 
 		if (this.#state === 'choices') {
-			const pos = this.#getCanvasPosition(event)
+			const pos = getCanvasPosition(event, this.#renderer.canvas, this.#renderer.width, this.#renderer.height)
 			const idx = this.#getChoiceAtPosition(pos.x, pos.y)
 			if (idx >= 0) {
 				const choice = this.#choices[idx]
@@ -357,7 +348,7 @@ export class DialogueBox {
 			return
 		}
 
-		const pos = this.#getCanvasPosition(event)
+		const pos = getCanvasPosition(event, this.#renderer.canvas, this.#renderer.width, this.#renderer.height)
 		this.#hoveredChoice = this.#getChoiceAtPosition(pos.x, pos.y)
 
 		// Update cursor style

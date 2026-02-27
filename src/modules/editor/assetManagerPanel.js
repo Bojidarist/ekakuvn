@@ -1,4 +1,7 @@
 import { EditorModal } from './editorModal.js'
+import { formatTime, formatFileSize } from '../shared/utils.js'
+import { createAudioPlayer } from '../shared/audioPlayerBuilder.js'
+import { createContextMenu, createMenuContainer, createMenuOption, createMenuSeparator, autoCloseMenu } from '../shared/contextMenu.js'
 
 export class AssetManagerPanel {
 	#state = null
@@ -512,32 +515,17 @@ export class AssetManagerPanel {
 	}
 
 	#showFolderContextMenu(event, folder) {
-		const existing = document.querySelector('.context-menu')
-		if (existing) existing.remove()
-
-		const menu = document.createElement('div')
-		menu.className = 'context-menu'
-		menu.style.cssText = `
-			position: fixed;
-			left: ${event.clientX}px;
-			top: ${event.clientY}px;
-			background: var(--bg-panel);
-			border: 1px solid var(--border-color);
-			border-radius: var(--radius);
-			padding: 4px 0;
-			z-index: 1000;
-			min-width: 140px;
-		`
+		const menu = createMenuContainer(event)
 
 		// Rename
-		const renameOpt = this.#createMenuOption('Rename', () => {
+		const renameOpt = createMenuOption('Rename', () => {
 			menu.remove()
 			this.#startEditing(folder.id, 'folder')
 		})
 		menu.appendChild(renameOpt)
 
 		// Delete
-		const deleteOpt = this.#createMenuOption('Delete', async () => {
+		const deleteOpt = createMenuOption('Delete', async () => {
 			if (await EditorModal.confirm(`Delete folder "${folder.name}"? Assets inside will be moved to the parent folder.`)) {
 				this.#state.removeFolder(folder.id)
 			}
@@ -546,31 +534,15 @@ export class AssetManagerPanel {
 		menu.appendChild(deleteOpt)
 
 		document.body.appendChild(menu)
-		this.#autoCloseMenu(menu)
+		autoCloseMenu(menu)
 	}
 
 	#showAssetContextMenu(event, asset) {
-		// Remove any existing menu
-		const existing = document.querySelector('.context-menu')
-		if (existing) existing.remove()
-
-		const menu = document.createElement('div')
-		menu.className = 'context-menu'
-		menu.style.cssText = `
-			position: fixed;
-			left: ${event.clientX}px;
-			top: ${event.clientY}px;
-			background: var(--bg-panel);
-			border: 1px solid var(--border-color);
-			border-radius: var(--radius);
-			padding: 4px 0;
-			z-index: 1000;
-			min-width: 140px;
-		`
+		const menu = createMenuContainer(event)
 
 		const types = ['background', 'character', 'music', 'sound']
 		for (const type of types) {
-			const opt = this.#createMenuOption(
+			const opt = createMenuOption(
 				(asset.type === type ? '\u2713 ' : '  ') + `Set as ${type}`,
 				() => {
 					this.#state.updateAsset(asset.id, { type })
@@ -581,14 +553,12 @@ export class AssetManagerPanel {
 		}
 
 		// Separator
-		const sep = document.createElement('div')
-		sep.style.cssText = 'height: 1px; background: var(--border-color); margin: 4px 0;'
-		menu.appendChild(sep)
+		menu.appendChild(createMenuSeparator())
 
 		// Move to folder submenu
 		const folders = this.#state.folders
 		if (folders.length > 0) {
-			const moveLabel = this.#createMenuOption('Move to...', null)
+			const moveLabel = createMenuOption('Move to...', null)
 			moveLabel.style.color = 'var(--text-secondary)'
 			moveLabel.style.cursor = 'default'
 			moveLabel.style.fontSize = '11px'
@@ -598,7 +568,7 @@ export class AssetManagerPanel {
 
 			// Root option
 			if (asset.folderId !== null) {
-				const rootOpt = this.#createMenuOption('  Root', () => {
+				const rootOpt = createMenuOption('  Root', () => {
 					this.#state.moveAssetToFolder(asset.id, null)
 					menu.remove()
 				})
@@ -607,60 +577,34 @@ export class AssetManagerPanel {
 
 			for (const folder of folders) {
 				if (folder.id === asset.folderId) continue
-				const folderOpt = this.#createMenuOption(`  ${folder.name}`, () => {
+				const folderOpt = createMenuOption(`  ${folder.name}`, () => {
 					this.#state.moveAssetToFolder(asset.id, folder.id)
 					menu.remove()
 				})
 				menu.appendChild(folderOpt)
 			}
 
-			const sep2 = document.createElement('div')
-			sep2.style.cssText = 'height: 1px; background: var(--border-color); margin: 4px 0;'
-			menu.appendChild(sep2)
+			menu.appendChild(createMenuSeparator())
 		}
 
 		// Rename
-		const renameOpt = this.#createMenuOption('Rename', () => {
+		const renameOpt = createMenuOption('Rename', () => {
 			menu.remove()
 			this.#startEditing(asset.id, 'asset')
 		})
 		menu.appendChild(renameOpt)
 
 		// Delete
-		const deleteOpt = this.#createMenuOption('Delete', () => {
+		const deleteOpt = createMenuOption('Delete', () => {
 			this.#state.removeAsset(asset.id)
 			menu.remove()
 		}, 'var(--danger)')
 		menu.appendChild(deleteOpt)
 
 		document.body.appendChild(menu)
-		this.#autoCloseMenu(menu)
+		autoCloseMenu(menu)
 	}
 
-	#createMenuOption(text, onClick, color) {
-		const opt = document.createElement('div')
-		opt.textContent = text
-		opt.style.cssText = `
-			padding: 6px 16px;
-			cursor: pointer;
-			font-size: 13px;
-			color: ${color ?? 'var(--text-primary)'};
-		`
-		opt.addEventListener('mouseenter', () => { opt.style.background = 'var(--bg-hover)' })
-		opt.addEventListener('mouseleave', () => { opt.style.background = 'transparent' })
-		if (onClick) opt.addEventListener('click', onClick)
-		return opt
-	}
-
-	#autoCloseMenu(menu) {
-		const closeMenu = (e) => {
-			if (!menu.contains(e.target)) {
-				menu.remove()
-				document.removeEventListener('click', closeMenu)
-			}
-		}
-		setTimeout(() => document.addEventListener('click', closeMenu), 0)
-	}
 
 	// --- Inline editing ---
 
@@ -761,7 +705,7 @@ export class AssetManagerPanel {
 			const sizeBytes = asset.dataUrl
 				? Math.round((asset.dataUrl.length - asset.dataUrl.indexOf(',') - 1) * 3 / 4)
 				: null
-			const sizeStr = sizeBytes != null ? this.#formatFileSize(sizeBytes) : 'unknown size'
+			const sizeStr = sizeBytes != null ? formatFileSize(sizeBytes) : 'unknown size'
 			meta.textContent = `${w} \u00D7 ${h} \u2022 ${asset.type} \u2022 ${sizeStr}`
 		})
 
@@ -812,7 +756,8 @@ export class AssetManagerPanel {
 		meta.className = 'preview-modal-meta'
 		meta.textContent = asset.type
 
-		const player = this.#createAudioPlayer(asset)
+		const { container: player, audio } = createAudioPlayer(asset)
+		this.#activeAudio = audio
 
 		const closeBtn = document.createElement('button')
 		closeBtn.className = 'preview-modal-close'
@@ -841,67 +786,6 @@ export class AssetManagerPanel {
 		this.#activeOverlay = { overlay, onKey }
 	}
 
-	#createAudioPlayer(asset) {
-		const container = document.createElement('div')
-		container.className = 'audio-player'
-
-		const audio = new Audio(asset.dataUrl ?? asset.path)
-		this.#activeAudio = audio
-
-		const playBtn = document.createElement('button')
-		playBtn.textContent = '\u25B6'
-		playBtn.title = 'Play'
-		playBtn.addEventListener('click', () => {
-			if (audio.paused) {
-				audio.play()
-				playBtn.textContent = '\u275A\u275A'
-				playBtn.title = 'Pause'
-			} else {
-				audio.pause()
-				playBtn.textContent = '\u25B6'
-				playBtn.title = 'Play'
-			}
-		})
-
-		const seekBar = document.createElement('input')
-		seekBar.type = 'range'
-		seekBar.min = '0'
-		seekBar.max = '100'
-		seekBar.value = '0'
-		seekBar.step = '0.1'
-		seekBar.addEventListener('input', () => {
-			if (audio.duration) {
-				audio.currentTime = (parseFloat(seekBar.value) / 100) * audio.duration
-			}
-		})
-
-		const timeLabel = document.createElement('span')
-		timeLabel.className = 'audio-time'
-		timeLabel.textContent = '0:00 / 0:00'
-
-		audio.addEventListener('timeupdate', () => {
-			if (audio.duration) {
-				seekBar.value = String((audio.currentTime / audio.duration) * 100)
-				timeLabel.textContent = `${this.#formatTime(audio.currentTime)} / ${this.#formatTime(audio.duration)}`
-			}
-		})
-
-		audio.addEventListener('ended', () => {
-			playBtn.textContent = '\u25B6'
-			playBtn.title = 'Play'
-			seekBar.value = '0'
-		})
-
-		audio.addEventListener('loadedmetadata', () => {
-			timeLabel.textContent = `0:00 / ${this.#formatTime(audio.duration)}`
-		})
-
-		container.appendChild(playBtn)
-		container.appendChild(seekBar)
-		container.appendChild(timeLabel)
-
-		return container
-	}
 
 	#closePreview() {
 		if (this.#activeOverlay) {
@@ -920,18 +804,5 @@ export class AssetManagerPanel {
 			this.#activeAudio.src = ''
 			this.#activeAudio = null
 		}
-	}
-
-	#formatTime(seconds) {
-		if (!isFinite(seconds)) return '0:00'
-		const m = Math.floor(seconds / 60)
-		const s = Math.floor(seconds % 60)
-		return `${m}:${s.toString().padStart(2, '0')}`
-	}
-
-	#formatFileSize(bytes) {
-		if (bytes < 1024) return `${bytes} B`
-		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 	}
 }

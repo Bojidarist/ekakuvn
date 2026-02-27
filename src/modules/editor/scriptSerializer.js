@@ -1,4 +1,6 @@
 import { EditorModal } from './editorModal.js'
+import { generateId } from '../shared/utils.js'
+import { gzipCompress, gzipDecompress, isGzipped, readAsJson } from '../shared/compression.js'
 
 export class ScriptSerializer {
 	#state = null
@@ -33,7 +35,7 @@ export class ScriptSerializer {
 		const json = JSON.stringify(script, null, '\t')
 		const title = this.#state.project.meta.title ?? 'untitled'
 		const filename = this.#slugify(title) + '.evn'
-		const compressed = await this.#gzipCompress(json)
+		const compressed = await gzipCompress(json)
 		this.#downloadBlob(filename, new Blob([compressed], { type: 'application/gzip' }))
 	}
 
@@ -42,7 +44,7 @@ export class ScriptSerializer {
 		const json = JSON.stringify(project, null, '\t')
 		const title = project.meta.title ?? 'untitled'
 		const filename = this.#slugify(title) + '.ekaku-project.evn'
-		const compressed = await this.#gzipCompress(json)
+		const compressed = await gzipCompress(json)
 		this.#downloadBlob(filename, new Blob([compressed], { type: 'application/gzip' }))
 	}
 
@@ -188,7 +190,7 @@ export class ScriptSerializer {
 		reader.onload = async (e) => {
 			try {
 				const buffer = e.target.result
-				const json = await this.#readAsJson(buffer)
+				const json = await readAsJson(buffer)
 				const data = JSON.parse(json)
 				this.#loadData(data)
 			} catch {
@@ -246,7 +248,7 @@ export class ScriptSerializer {
 				scene.timeline = scene.timeline.map(node => {
 					const { type, auto, delay, ...rest } = node
 					return {
-						id: this.#generateId('node'),
+						id: generateId('node'),
 						type,
 						auto: auto ?? false,
 						delay: delay ?? 0,
@@ -261,7 +263,7 @@ export class ScriptSerializer {
 
 				if (scene.background) {
 					scene.timeline.push({
-						id: this.#generateId('node'),
+						id: generateId('node'),
 						type: 'background',
 						auto: true,
 						delay: 0,
@@ -271,7 +273,7 @@ export class ScriptSerializer {
 
 				if (scene.music?.assetId) {
 					scene.timeline.push({
-						id: this.#generateId('node'),
+						id: generateId('node'),
 						type: 'music',
 						auto: true,
 						delay: 0,
@@ -285,7 +287,7 @@ export class ScriptSerializer {
 
 				for (const char of scene.characters ?? []) {
 					scene.timeline.push({
-						id: this.#generateId('node'),
+						id: generateId('node'),
 						type: 'showCharacter',
 						auto: true,
 						delay: 0,
@@ -303,7 +305,7 @@ export class ScriptSerializer {
 				for (const line of scene.dialogue ?? []) {
 					if (line.expression) {
 						scene.timeline.push({
-							id: this.#generateId('node'),
+							id: generateId('node'),
 							type: 'expression',
 							auto: true,
 							delay: 0,
@@ -315,7 +317,7 @@ export class ScriptSerializer {
 						})
 					}
 					scene.timeline.push({
-						id: this.#generateId('node'),
+						id: generateId('node'),
 						type: 'dialogue',
 						auto: false,
 						delay: 0,
@@ -329,7 +331,7 @@ export class ScriptSerializer {
 
 				if (scene.choices && scene.choices.length > 0) {
 					scene.timeline.push({
-						id: this.#generateId('node'),
+						id: generateId('node'),
 						type: 'choice',
 						auto: false,
 						delay: 0,
@@ -353,61 +355,6 @@ export class ScriptSerializer {
 		this.#state.loadProject(project)
 	}
 
-	// --- Compression ---
-
-	async #gzipCompress(text) {
-		const encoder = new TextEncoder()
-		const input = encoder.encode(text)
-		const stream = new Blob([input]).stream().pipeThrough(new CompressionStream('gzip'))
-		const reader = stream.getReader()
-		const chunks = []
-		while (true) {
-			const { done, value } = await reader.read()
-			if (done) break
-			chunks.push(value)
-		}
-		// Concatenate all chunks into a single Uint8Array
-		const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0)
-		const result = new Uint8Array(totalLength)
-		let offset = 0
-		for (const chunk of chunks) {
-			result.set(chunk, offset)
-			offset += chunk.length
-		}
-		return result
-	}
-
-	async #gzipDecompress(buffer) {
-		const stream = new Blob([buffer]).stream().pipeThrough(new DecompressionStream('gzip'))
-		const reader = stream.getReader()
-		const chunks = []
-		while (true) {
-			const { done, value } = await reader.read()
-			if (done) break
-			chunks.push(value)
-		}
-		const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0)
-		const result = new Uint8Array(totalLength)
-		let offset = 0
-		for (const chunk of chunks) {
-			result.set(chunk, offset)
-			offset += chunk.length
-		}
-		return new TextDecoder().decode(result)
-	}
-
-	#isGzipped(buffer) {
-		const bytes = new Uint8Array(buffer, 0, 2)
-		return bytes[0] === 0x1f && bytes[1] === 0x8b
-	}
-
-	async #readAsJson(buffer) {
-		if (this.#isGzipped(buffer)) {
-			return await this.#gzipDecompress(buffer)
-		}
-		return new TextDecoder().decode(buffer)
-	}
-
 	// --- Helpers ---
 
 	#downloadBlob(filename, blob) {
@@ -427,9 +374,5 @@ export class ScriptSerializer {
 			.replace(/[^a-z0-9]+/g, '-')
 			.replace(/^-+|-+$/g, '')
 			|| 'untitled'
-	}
-
-	#generateId(prefix) {
-		return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
 	}
 }

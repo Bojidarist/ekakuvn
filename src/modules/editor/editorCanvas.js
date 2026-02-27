@@ -1,4 +1,5 @@
 import { Renderer } from '../runtime/renderer.js'
+import { getCanvasPosition } from '../shared/canvasUtils.js'
 
 export class EditorCanvas {
 	#state = null
@@ -393,16 +394,6 @@ export class EditorCanvas {
 		return 'nesw-resize'
 	}
 
-	#getCanvasPosition(event) {
-		const rect = this.#canvas.getBoundingClientRect()
-		const scaleX = this.#renderer.width / rect.width
-		const scaleY = this.#renderer.height / rect.height
-		return {
-			x: (event.clientX - rect.left) * scaleX,
-			y: (event.clientY - rect.top) * scaleY
-		}
-	}
-
 	#hitTestCharacter(canvasX, canvasY) {
 		// Convert active chars Map to array for reverse iteration (top-most first)
 		const entries = [...this.#activeChars.entries()]
@@ -429,7 +420,7 @@ export class EditorCanvas {
 	// --- Mouse interaction ---
 
 	#onMouseDown(e) {
-		const pos = this.#getCanvasPosition(e)
+		const pos = getCanvasPosition(e, this.#canvas, this.#renderer.width, this.#renderer.height)
 
 		// Check resize handles first (only on currently selected character)
 		const handleHit = this.#hitTestHandle(pos.x, pos.y)
@@ -488,7 +479,7 @@ export class EditorCanvas {
 	#onMouseMove(e) {
 		// Handle resize drag
 		if (this.#resizing) {
-			const pos = this.#getCanvasPosition(e)
+			const pos = getCanvasPosition(e, this.#canvas, this.#renderer.width, this.#renderer.height)
 			const char = this.#findCharByNodeId(this.#resizing.nodeId)
 			if (!char) return
 
@@ -539,7 +530,7 @@ export class EditorCanvas {
 		}
 
 		if (!this.#dragging) {
-			const pos = this.#getCanvasPosition(e)
+			const pos = getCanvasPosition(e, this.#canvas, this.#renderer.width, this.#renderer.height)
 			const handleHit = this.#hitTestHandle(pos.x, pos.y)
 			if (handleHit) {
 				this.#canvas.style.cursor = this.#getHandleCursor(handleHit.handle)
@@ -550,7 +541,7 @@ export class EditorCanvas {
 			return
 		}
 
-		const pos = this.#getCanvasPosition(e)
+		const pos = getCanvasPosition(e, this.#canvas, this.#renderer.width, this.#renderer.height)
 		const char = this.#findCharByNodeId(this.#dragging.nodeId)
 		if (!char) return
 
@@ -608,7 +599,7 @@ export class EditorCanvas {
 	#onClick(e) {
 		if (this.#dragging || this.#resizing) return
 
-		const pos = this.#getCanvasPosition(e)
+		const pos = getCanvasPosition(e, this.#canvas, this.#renderer.width, this.#renderer.height)
 		const hit = this.#hitTestCharacter(pos.x, pos.y)
 
 		if (hit) {
@@ -628,7 +619,7 @@ export class EditorCanvas {
 			const scene = this.#state.currentScene
 			if (!scene) return
 
-			const pos = this.#getCanvasPosition(e)
+			const pos = getCanvasPosition(e, this.#canvas, this.#renderer.width, this.#renderer.height)
 
 			if (assetType === 'character') {
 				// Look up asset name for the character name field

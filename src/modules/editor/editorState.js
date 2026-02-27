@@ -1,4 +1,5 @@
 import { EkakuConfig } from '../ekakuConfig.js'
+import { generateId } from '../shared/utils.js'
 
 export class EditorState {
 	#project = null
@@ -136,7 +137,7 @@ export class EditorState {
 	addScene(id, sectionId = null) {
 		this.#pushUndo()
 		const scene = {
-			id: id ?? this.#generateId('scene'),
+			id: id ?? generateId('scene'),
 			sectionId: sectionId,
 			timeline: [],
 			choices: null,
@@ -195,7 +196,7 @@ export class EditorState {
 
 		this.#pushUndo()
 		const copy = structuredClone(source)
-		copy.id = this.#generateId('scene')
+		copy.id = generateId('scene')
 		this.#project.scenes.push(copy)
 		this.#autoSave()
 		this.#emit('scenesChanged', this.#project.scenes)
@@ -248,7 +249,7 @@ export class EditorState {
 		this.#pushUndo()
 		if (!this.#project.sceneSections) this.#project.sceneSections = []
 		const section = {
-			id: this.#generateId('section'),
+			id: generateId('section'),
 			name,
 			parentId,
 			collapsed: false
@@ -360,7 +361,7 @@ export class EditorState {
 
 		this.#pushUndo()
 		const entry = {
-			id: this.#generateId('node'),
+			id: generateId('node'),
 			type: node.type,
 			auto: node.auto ?? defaults.auto,
 			delay: node.delay ?? 0,
@@ -432,7 +433,7 @@ export class EditorState {
 
 		this.#pushUndo()
 		const copy = structuredClone(source)
-		copy.id = this.#generateId('node')
+		copy.id = generateId('node')
 
 		const idx = scene.timeline.indexOf(source)
 		scene.timeline.splice(idx + 1, 0, copy)
@@ -605,7 +606,7 @@ export class EditorState {
 	addAsset(asset) {
 		this.#pushUndo()
 		const entry = {
-			id: asset.id ?? this.#generateId('asset'),
+			id: asset.id ?? generateId('asset'),
 			type: asset.type,
 			path: asset.path,
 			dataUrl: asset.dataUrl ?? null,
@@ -675,7 +676,7 @@ export class EditorState {
 	addFolder(name, parentId = null) {
 		this.#pushUndo()
 		const folder = {
-			id: this.#generateId('folder'),
+			id: generateId('folder'),
 			name,
 			parentId
 		}
@@ -947,17 +948,13 @@ export class EditorState {
 		this.#config.set('project', this.#project)
 	}
 
-	#generateId(prefix) {
-		return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
-	}
-
 	#migrateScene(scene) {
 		// Only migrate if scene has old format (dialogue array instead of timeline)
 		if (scene.timeline) return
 		if (!Array.isArray(scene.dialogue)) return
 
 		const timeline = []
-		const genId = () => this.#generateId('node')
+		const genId = () => generateId('node')
 
 		// 1. Background node
 		if (scene.background) {

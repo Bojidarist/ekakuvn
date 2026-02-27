@@ -1,4 +1,5 @@
 import { Ekakuvn } from './modules/ekakuvn.js'
+import { readAsJson } from './modules/shared/compression.js'
 
 const game = new Ekakuvn()
 
@@ -9,31 +10,7 @@ const scriptUrl = params.get('script') || 'docs/example-script.json'
 async function loadScript(url) {
 	const res = await fetch(url)
 	const buffer = await res.arrayBuffer()
-	const bytes = new Uint8Array(buffer, 0, 2)
-	const isGzipped = bytes[0] === 0x1f && bytes[1] === 0x8b
-
-	let json
-	if (isGzipped) {
-		const stream = new Blob([buffer]).stream().pipeThrough(new DecompressionStream('gzip'))
-		const reader = stream.getReader()
-		const chunks = []
-		while (true) {
-			const { done, value } = await reader.read()
-			if (done) break
-			chunks.push(value)
-		}
-		const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0)
-		const result = new Uint8Array(totalLength)
-		let offset = 0
-		for (const chunk of chunks) {
-			result.set(chunk, offset)
-			offset += chunk.length
-		}
-		json = new TextDecoder().decode(result)
-	} else {
-		json = new TextDecoder().decode(buffer)
-	}
-
+	const json = await readAsJson(buffer)
 	return JSON.parse(json)
 }
 

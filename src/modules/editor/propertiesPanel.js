@@ -1,3 +1,6 @@
+import { formatFileSize } from '../shared/utils.js'
+import { createAudioPlayer } from '../shared/audioPlayerBuilder.js'
+
 export class PropertiesPanel {
 	#state = null
 	#contentEl = null
@@ -1276,7 +1279,7 @@ export class PropertiesPanel {
 				const sizeBytes = asset.dataUrl
 					? Math.round((asset.dataUrl.length - asset.dataUrl.indexOf(',') - 1) * 3 / 4)
 					: null
-				const sizeStr = sizeBytes != null ? this.#formatFileSize(sizeBytes) : ''
+				const sizeStr = sizeBytes != null ? formatFileSize(sizeBytes) : ''
 				const dimLabel = `${w} \u00D7 ${h}` + (sizeStr ? ` \u2022 ${sizeStr}` : '')
 				this.#addReadonly('Dimensions', dimLabel)
 			})
@@ -1292,63 +1295,8 @@ export class PropertiesPanel {
 			// Audio player (compact for narrow panel)
 			this.#stopPropAudio()
 
-			const player = document.createElement('div')
-			player.className = 'audio-player-compact'
-
-			const audio = new Audio(asset.dataUrl ?? asset.path)
+			const { container: player, audio } = createAudioPlayer(asset, { className: 'audio-player-compact' })
 			this.#propAudio = audio
-
-			const playBtn = document.createElement('button')
-			playBtn.textContent = '\u25B6'
-			playBtn.title = 'Play'
-			playBtn.addEventListener('click', () => {
-				if (audio.paused) {
-					audio.play()
-					playBtn.textContent = '\u275A\u275A'
-					playBtn.title = 'Pause'
-				} else {
-					audio.pause()
-					playBtn.textContent = '\u25B6'
-					playBtn.title = 'Play'
-				}
-			})
-
-			const seekBar = document.createElement('input')
-			seekBar.type = 'range'
-			seekBar.min = '0'
-			seekBar.max = '100'
-			seekBar.value = '0'
-			seekBar.step = '0.1'
-			seekBar.addEventListener('input', () => {
-				if (audio.duration) {
-					audio.currentTime = (parseFloat(seekBar.value) / 100) * audio.duration
-				}
-			})
-
-			const timeLabel = document.createElement('span')
-			timeLabel.className = 'audio-time'
-			timeLabel.textContent = '0:00 / 0:00'
-
-			audio.addEventListener('timeupdate', () => {
-				if (audio.duration) {
-					seekBar.value = String((audio.currentTime / audio.duration) * 100)
-					timeLabel.textContent = `${this.#formatTime(audio.currentTime)} / ${this.#formatTime(audio.duration)}`
-				}
-			})
-
-			audio.addEventListener('ended', () => {
-				playBtn.textContent = '\u25B6'
-				playBtn.title = 'Play'
-				seekBar.value = '0'
-			})
-
-			audio.addEventListener('loadedmetadata', () => {
-				timeLabel.textContent = `0:00 / ${this.#formatTime(audio.duration)}`
-			})
-
-			player.appendChild(playBtn)
-			player.appendChild(seekBar)
-			player.appendChild(timeLabel)
 			this.#contentEl.appendChild(player)
 		}
 	}
@@ -1359,19 +1307,6 @@ export class PropertiesPanel {
 			this.#propAudio.src = ''
 			this.#propAudio = null
 		}
-	}
-
-	#formatTime(seconds) {
-		if (!isFinite(seconds)) return '0:00'
-		const m = Math.floor(seconds / 60)
-		const s = Math.floor(seconds % 60)
-		return `${m}:${s.toString().padStart(2, '0')}`
-	}
-
-	#formatFileSize(bytes) {
-		if (bytes < 1024) return `${bytes} B`
-		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 	}
 
 	// --- UI helpers ---

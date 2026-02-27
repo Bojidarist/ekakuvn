@@ -1,4 +1,5 @@
 import { EditorModal } from './editorModal.js'
+import { createContextMenu } from '../shared/contextMenu.js'
 
 export class SceneManagerPanel {
 	#state = null
@@ -271,24 +272,7 @@ export class SceneManagerPanel {
 	// --- Context menus ---
 
 	#showContextMenu(event, scene) {
-		const existing = document.querySelector('.context-menu')
-		if (existing) existing.remove()
-
-		const menu = document.createElement('div')
-		menu.className = 'context-menu'
-		menu.style.cssText = `
-			position: fixed;
-			left: ${event.clientX}px;
-			top: ${event.clientY}px;
-			background: var(--bg-panel);
-			border: 1px solid var(--border-color);
-			border-radius: var(--radius);
-			padding: 4px 0;
-			z-index: 1000;
-			min-width: 160px;
-		`
-
-		const items = [
+		createContextMenu(event, [
 			{
 				label: 'Set as start scene',
 				action: () => {
@@ -337,56 +321,11 @@ export class SceneManagerPanel {
 					this.#state.deleteScene(scene.id)
 				}
 			}
-		]
-
-		for (const item of items) {
-			const opt = document.createElement('div')
-			opt.textContent = item.label
-			opt.style.cssText = `
-				padding: 6px 16px;
-				cursor: pointer;
-				font-size: 13px;
-				color: ${item.danger ? 'var(--danger)' : 'var(--text-primary)'};
-			`
-			opt.addEventListener('mouseenter', () => { opt.style.background = 'var(--bg-hover)' })
-			opt.addEventListener('mouseleave', () => { opt.style.background = 'transparent' })
-			opt.addEventListener('click', () => {
-				item.action()
-				menu.remove()
-			})
-			menu.appendChild(opt)
-		}
-
-		document.body.appendChild(menu)
-
-		const closeMenu = (e) => {
-			if (!menu.contains(e.target)) {
-				menu.remove()
-				document.removeEventListener('click', closeMenu)
-			}
-		}
-		setTimeout(() => document.addEventListener('click', closeMenu), 0)
+		])
 	}
 
 	#showSectionContextMenu(event, section) {
-		const existing = document.querySelector('.context-menu')
-		if (existing) existing.remove()
-
-		const menu = document.createElement('div')
-		menu.className = 'context-menu'
-		menu.style.cssText = `
-			position: fixed;
-			left: ${event.clientX}px;
-			top: ${event.clientY}px;
-			background: var(--bg-panel);
-			border: 1px solid var(--border-color);
-			border-radius: var(--radius);
-			padding: 4px 0;
-			z-index: 1000;
-			min-width: 160px;
-		`
-
-		const items = [
+		createContextMenu(event, [
 			{
 				label: 'Rename',
 				action: async () => {
@@ -425,34 +364,6 @@ export class SceneManagerPanel {
 					this.#state.removeSceneSection(section.id)
 				}
 			}
-		]
-
-		for (const item of items) {
-			const opt = document.createElement('div')
-			opt.textContent = item.label
-			opt.style.cssText = `
-				padding: 6px 16px;
-				cursor: pointer;
-				font-size: 13px;
-				color: ${item.danger ? 'var(--danger)' : 'var(--text-primary)'};
-			`
-			opt.addEventListener('mouseenter', () => { opt.style.background = 'var(--bg-hover)' })
-			opt.addEventListener('mouseleave', () => { opt.style.background = 'transparent' })
-			opt.addEventListener('click', () => {
-				item.action()
-				menu.remove()
-			})
-			menu.appendChild(opt)
-		}
-
-		document.body.appendChild(menu)
-
-		const closeMenu = (e) => {
-			if (!menu.contains(e.target)) {
-				menu.remove()
-				document.removeEventListener('click', closeMenu)
-			}
-		}
-		setTimeout(() => document.addEventListener('click', closeMenu), 0)
+		])
 	}
 }

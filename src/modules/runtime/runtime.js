@@ -6,6 +6,7 @@ import { SceneController } from './sceneController.js'
 import { SaveManager } from './saveManager.js'
 import { TransitionManager } from './transitionManager.js'
 import { ThemeManager } from './themeManager.js'
+import { getCanvasPosition } from '../shared/canvasUtils.js'
 
 export class EkakuRuntime {
 	#renderer = null
@@ -305,7 +306,7 @@ export class EkakuRuntime {
 	}
 
 	#onTitleClick(event) {
-		const pos = this.#getCanvasPos(event)
+		const pos = getCanvasPosition(event, this.#renderer.canvas, this.#renderer.width, this.#renderer.height)
 		const idx = this.#getTitleButtonIndex(pos.x, pos.y)
 		if (idx < 0) return
 
@@ -334,7 +335,7 @@ export class EkakuRuntime {
 	}
 
 	#onTitleMove(event) {
-		const pos = this.#getCanvasPos(event)
+		const pos = getCanvasPosition(event, this.#renderer.canvas, this.#renderer.width, this.#renderer.height)
 		this.#titleHovered = this.#getTitleButtonIndex(pos.x, pos.y)
 		this.#renderer.canvas.style.cursor = this.#titleHovered >= 0 ? 'pointer' : 'default'
 	}
@@ -493,7 +494,7 @@ export class EkakuRuntime {
 	}
 
 	#menuClickHandler = (event) => {
-		const pos = this.#getCanvasPos(event)
+		const pos = getCanvasPosition(event, this.#renderer.canvas, this.#renderer.width, this.#renderer.height)
 
 		if (this.#menuState === 'main') {
 			this.#handleMainMenuClick(pos.x, pos.y)
@@ -680,7 +681,7 @@ export class EkakuRuntime {
 	#onMenuMousedown(event) {
 		if (this.#menuState !== 'settings') return
 
-		const pos = this.#getCanvasPos(event)
+		const pos = getCanvasPosition(event, this.#renderer.canvas, this.#renderer.width, this.#renderer.height)
 		const { sliderX, sliderW, startY, spacing } = this.#getSliderLayout()
 		const volumes = this.#getVolumeEntries()
 
@@ -698,7 +699,7 @@ export class EkakuRuntime {
 	#onMenuMousemove(event) {
 		if (!this.#draggingSlider) return
 
-		const pos = this.#getCanvasPos(event)
+		const pos = getCanvasPosition(event, this.#renderer.canvas, this.#renderer.width, this.#renderer.height)
 		const { sliderX, sliderW } = this.#getSliderLayout()
 		const val = Math.max(0, Math.min(1, (pos.x - sliderX) / sliderW))
 		this.#draggingSlider.set(val)
@@ -1026,17 +1027,5 @@ export class EkakuRuntime {
 			color: tm.color(ld.progressColor, 'textSecondary'),
 			align: 'center'
 		})
-	}
-
-	// ===== Helpers =====
-
-	#getCanvasPos(event) {
-		const rect = this.#renderer.canvas.getBoundingClientRect()
-		const scaleX = this.#renderer.width / rect.width
-		const scaleY = this.#renderer.height / rect.height
-		return {
-			x: (event.clientX - rect.left) * scaleX,
-			y: (event.clientY - rect.top) * scaleY
-		}
 	}
 }
