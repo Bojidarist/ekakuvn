@@ -16,7 +16,7 @@ export class SaveManager {
 			timestamp: new Date().toISOString(),
 			slotName,
 			currentSceneId: state.currentSceneId,
-			dialogueIndex: state.dialogueIndex,
+			nodeIndex: state.nodeIndex,
 			musicState: state.musicState ?? null,
 			flags: state.flags ?? {}
 		}
@@ -68,7 +68,7 @@ export class SaveManager {
 					slotName: data.slotName,
 					timestamp: data.timestamp,
 					currentSceneId: data.currentSceneId,
-					dialogueIndex: data.dialogueIndex
+					nodeIndex: data.nodeIndex
 				})
 			} catch {
 				// Skip corrupted entries
