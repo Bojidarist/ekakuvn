@@ -1,3 +1,5 @@
+import { EditorModal } from './editorModal.js'
+
 export class SceneManagerPanel {
 	#state = null
 	#listEl = null
@@ -16,8 +18,8 @@ export class SceneManagerPanel {
 			this.#state.selectScene(scene.id)
 		})
 
-		document.getElementById('btn-add-section').addEventListener('click', () => {
-			const name = prompt('Section name:')
+		document.getElementById('btn-add-section').addEventListener('click', async () => {
+			const name = await EditorModal.prompt('Section name:')
 			if (name) {
 				this.#state.addSceneSection(name)
 			}
@@ -123,9 +125,9 @@ export class SceneManagerPanel {
 		const addSubBtn = document.createElement('button')
 		addSubBtn.textContent = '\uD83D\uDCC2'
 		addSubBtn.title = 'Add sub-section'
-		addSubBtn.addEventListener('click', (e) => {
+		addSubBtn.addEventListener('click', async (e) => {
 			e.stopPropagation()
-			const name = prompt('Sub-section name:')
+			const name = await EditorModal.prompt('Sub-section name:')
 			if (name) {
 				this.#state.addSceneSection(name, section.id)
 			}
@@ -153,9 +155,9 @@ export class SceneManagerPanel {
 		})
 
 		// Double-click to rename
-		header.addEventListener('dblclick', (e) => {
+		header.addEventListener('dblclick', async (e) => {
 			e.stopPropagation()
-			const newName = prompt('Rename section:', section.name)
+			const newName = await EditorModal.prompt('Rename section:', section.name)
 			if (newName && newName !== section.name) {
 				this.#state.renameSceneSection(section.id, newName)
 			}
@@ -297,8 +299,8 @@ export class SceneManagerPanel {
 			},
 			{
 				label: 'Rename',
-				action: () => {
-					const newId = prompt('Rename scene:', scene.id)
+				action: async () => {
+					const newId = await EditorModal.prompt('Rename scene:', scene.id)
 					if (newId && newId !== scene.id) {
 						const oldId = scene.id
 						for (const s of this.#state.scenes) {
@@ -387,8 +389,8 @@ export class SceneManagerPanel {
 		const items = [
 			{
 				label: 'Rename',
-				action: () => {
-					const newName = prompt('Rename section:', section.name)
+				action: async () => {
+					const newName = await EditorModal.prompt('Rename section:', section.name)
 					if (newName && newName !== section.name) {
 						this.#state.renameSceneSection(section.id, newName)
 					}
@@ -403,8 +405,8 @@ export class SceneManagerPanel {
 			},
 			{
 				label: 'Add sub-section',
-				action: () => {
-					const name = prompt('Sub-section name:')
+				action: async () => {
+					const name = await EditorModal.prompt('Sub-section name:')
 					if (name) {
 						this.#state.addSceneSection(name, section.id)
 					}

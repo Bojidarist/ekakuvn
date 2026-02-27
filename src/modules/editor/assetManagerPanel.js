@@ -1,3 +1,5 @@
+import { EditorModal } from './editorModal.js'
+
 export class AssetManagerPanel {
 	#state = null
 	#containerEl = null
@@ -535,8 +537,8 @@ export class AssetManagerPanel {
 		menu.appendChild(renameOpt)
 
 		// Delete
-		const deleteOpt = this.#createMenuOption('Delete', () => {
-			if (confirm(`Delete folder "${folder.name}"? Assets inside will be moved to the parent folder.`)) {
+		const deleteOpt = this.#createMenuOption('Delete', async () => {
+			if (await EditorModal.confirm(`Delete folder "${folder.name}"? Assets inside will be moved to the parent folder.`)) {
 				this.#state.removeFolder(folder.id)
 			}
 			menu.remove()

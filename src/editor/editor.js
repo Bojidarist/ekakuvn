@@ -7,6 +7,7 @@ import { TimelineEditor } from '../modules/editor/timelineEditor.js'
 import { ScriptSerializer } from '../modules/editor/scriptSerializer.js'
 import { PanelResizer } from '../modules/editor/panelResizer.js'
 import { EkakuConfig } from '../modules/ekakuConfig.js'
+import { EditorModal } from '../modules/editor/editorModal.js'
 
 // --- Initialize state ---
 
@@ -35,8 +36,8 @@ const serializer = new ScriptSerializer(state)
 
 // --- Toolbar buttons ---
 
-document.getElementById('btn-new').addEventListener('click', () => {
-	if (!confirm('Start a new project? Unsaved changes will be lost.')) return
+document.getElementById('btn-new').addEventListener('click', async () => {
+	if (!await EditorModal.confirm('Start a new project? Unsaved changes will be lost.')) return
 	state.newProject()
 	const scene = state.addScene('scene-intro')
 	state.selectScene(scene.id)
@@ -46,13 +47,12 @@ document.getElementById('btn-open').addEventListener('click', () => {
 	serializer.openImportDialog()
 })
 
-document.getElementById('btn-save').addEventListener('click', (e) => {
-	if (e.shiftKey) {
-		// Shift+click exports full editor project
-		serializer.exportProjectToFile()
-	} else {
-		serializer.exportToFile()
-	}
+document.getElementById('btn-save').addEventListener('click', () => {
+	serializer.exportProjectToFile()
+})
+
+document.getElementById('btn-export').addEventListener('click', () => {
+	serializer.exportToFile()
 })
 
 document.getElementById('btn-preview').addEventListener('click', () => {
@@ -148,20 +148,22 @@ document.addEventListener('keydown', (e) => {
 		state.redo()
 	} else if (ctrl && e.key === 's' && !e.shiftKey) {
 		e.preventDefault()
-		serializer.exportToFile()
+		serializer.exportProjectToFile()
 	} else if (ctrl && e.key === 'S' && e.shiftKey) {
 		e.preventDefault()
-		serializer.exportProjectToFile()
+		serializer.exportToFile()
 	} else if (ctrl && e.key === 'o') {
 		e.preventDefault()
 		serializer.openImportDialog()
-	} else if (ctrl && e.key === 'n') {
+	} else if (ctrl && e.key === 'p') {
 		e.preventDefault()
-		if (confirm('Start a new project? Unsaved changes will be lost.')) {
-			state.newProject()
-			const scene = state.addScene('scene-intro')
-			state.selectScene(scene.id)
-		}
+		EditorModal.confirm('Start a new project? Unsaved changes will be lost.').then((ok) => {
+			if (ok) {
+				state.newProject()
+				const scene = state.addScene('scene-intro')
+				state.selectScene(scene.id)
+			}
+		})
 	} else if (ctrl && e.key === 'd') {
 		e.preventDefault()
 		const scene = state.currentScene

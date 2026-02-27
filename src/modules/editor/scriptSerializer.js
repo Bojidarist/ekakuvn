@@ -1,3 +1,5 @@
+import { EditorModal } from './editorModal.js'
+
 export class ScriptSerializer {
 	#state = null
 	#fileInput = null
@@ -24,7 +26,7 @@ export class ScriptSerializer {
 		const warnings = this.#validate()
 		if (warnings.length > 0) {
 			const msg = 'Export warnings:\n\n' + warnings.join('\n') + '\n\nExport anyway?'
-			if (!confirm(msg)) return
+			if (!await EditorModal.confirm(msg)) return
 		}
 
 		const script = this.#state.toScript()
@@ -190,11 +192,11 @@ export class ScriptSerializer {
 				const data = JSON.parse(json)
 				this.#loadData(data)
 			} catch {
-				alert('Failed to parse file. Make sure it is a valid .evn or JSON file.')
+				EditorModal.alert('Failed to parse file. Make sure it is a valid .evn or JSON file.')
 			}
 		}
 		reader.onerror = () => {
-			alert('Failed to read file.')
+			EditorModal.alert('Failed to read file.')
 		}
 		reader.readAsArrayBuffer(file)
 	}
@@ -202,16 +204,16 @@ export class ScriptSerializer {
 	#loadData(data) {
 		// Validate basic structure
 		if (!data || typeof data !== 'object') {
-			alert('Invalid file format.')
+			EditorModal.alert('Invalid file format.')
 			return
 		}
 
 		// Detect if it's a runtime script or an editor project
 		if (data.meta && data.scenes && Array.isArray(data.scenes)) {
-			// Check if it has editor-specific fields (timeline node IDs)
+			// Check if it has editor-specific fields (timeline node IDs, sections, folders)
 			const hasEditorFields = data.scenes.some(s =>
 				s.timeline?.some(n => n.id)
-			)
+			) || Array.isArray(data.sceneSections) || Array.isArray(data.folders)
 
 			if (hasEditorFields) {
 				// Full editor project -- load directly (migration happens in loadProject)
@@ -223,7 +225,7 @@ export class ScriptSerializer {
 			return
 		}
 
-		alert('Unrecognized file format. Expected an ekaku script or project file.')
+		EditorModal.alert('Unrecognized file format. Expected an ekaku script or project file.')
 	}
 
 	#importRuntimeScript(script) {
