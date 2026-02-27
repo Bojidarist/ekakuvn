@@ -205,6 +205,127 @@ button.toggle-active {
 	color: var(--danger);
 }
 
+/* Scene search bar */
+
+.scene-search {
+	display: flex;
+	align-items: center;
+	padding: 6px 8px;
+	border-bottom: 1px solid var(--border-color);
+	flex-shrink: 0;
+	gap: 4px;
+}
+
+.scene-search input {
+	flex: 1;
+	padding: 4px 8px;
+	border: 1px solid var(--border-color);
+	border-radius: var(--radius);
+	background: var(--bg-input);
+	color: var(--text-primary);
+	font-size: 12px;
+	font-family: inherit;
+	outline: none;
+}
+
+.scene-search input:focus {
+	border-color: var(--accent);
+}
+
+.scene-search input::placeholder {
+	color: var(--text-secondary);
+	opacity: 0.7;
+}
+
+.scene-search .search-clear {
+	padding: 2px 6px;
+	font-size: 14px;
+	line-height: 1;
+	border: none;
+	background: transparent;
+	color: var(--text-secondary);
+	cursor: pointer;
+}
+
+.scene-search .search-clear:hover {
+	color: var(--text-primary);
+}
+
+/* Scene empty state */
+
+.scene-empty {
+	text-align: center;
+	color: var(--text-secondary);
+	font-size: 12px;
+	padding: 16px;
+	list-style: none;
+}
+
+/* Scene sections */
+
+.scene-section-header {
+	padding: 6px 12px;
+	border-radius: var(--radius);
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--text-secondary);
+	transition: background 0.1s;
+	user-select: none;
+	list-style: none;
+}
+
+.scene-section-header:hover {
+	background: var(--bg-hover);
+}
+
+.scene-section-header.drop-target {
+	background: var(--accent-dim);
+	outline: 1px solid var(--accent);
+	outline-offset: -1px;
+}
+
+.section-arrow {
+	font-size: 9px;
+	width: 12px;
+	text-align: center;
+	flex-shrink: 0;
+	color: var(--text-secondary);
+}
+
+.section-label {
+	flex: 1;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.section-actions {
+	display: flex;
+	gap: 4px;
+	opacity: 0;
+	transition: opacity 0.1s;
+}
+
+.scene-section-header:hover .section-actions {
+	opacity: 1;
+}
+
+.section-actions button {
+	padding: 2px 6px;
+	font-size: 11px;
+	border: none;
+	background: transparent;
+	color: var(--text-secondary);
+}
+
+.section-actions button:hover {
+	color: var(--text-primary);
+}
+
 /* Asset grid */
 
 .asset-breadcrumb {
@@ -697,6 +818,13 @@ button.toggle-active {
 
 .timeline-node:hover .node-actions {
 	opacity: 1;
+}
+
+/* Drop target indicator for timeline list */
+#timeline-list.drop-target {
+	background: var(--accent-dim);
+	outline: 1px dashed var(--accent);
+	outline-offset: -1px;
 }
 
 /* --- Timeline node edit form --- */

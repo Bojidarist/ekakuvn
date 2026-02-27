@@ -91,6 +91,18 @@ export class EditorState {
 			this.#project.folders = []
 		}
 
+		// Ensure sceneSections array exists for backward compatibility
+		if (!this.#project.sceneSections) {
+			this.#project.sceneSections = []
+		}
+
+		// Ensure scenes have sectionId for backward compatibility
+		for (const scene of this.#project.scenes) {
+			if (scene.sectionId === undefined) {
+				scene.sectionId = null
+			}
+		}
+
 		// Ensure theme field exists (null = use defaults)
 		if (this.#project.meta.theme === undefined) {
 			this.#project.meta.theme = null
@@ -121,10 +133,11 @@ export class EditorState {
 
 	// --- Scenes ---
 
-	addScene(id) {
+	addScene(id, sectionId = null) {
 		this.#pushUndo()
 		const scene = {
 			id: id ?? this.#generateId('scene'),
+			sectionId: sectionId,
 			timeline: [],
 			choices: null,
 			next: null,
@@ -212,6 +225,115 @@ export class EditorState {
 		scene[key] = value
 		this.#autoSave()
 		this.#emit('sceneUpdated', { sceneId, key, value })
+	}
+
+	moveSceneToSection(sceneId, sectionId) {
+		const scene = this.#project.scenes.find(s => s.id === sceneId)
+		if (!scene) return
+
+		this.#pushUndo()
+		scene.sectionId = sectionId
+		this.#autoSave()
+		this.#emit('scenesChanged', this.#project.scenes)
+	}
+
+	// --- Scene Sections ---
+
+	get sceneSections() {
+		return this.#project.sceneSections ?? []
+	}
+
+	addSceneSection(name, parentId = null) {
+		this.#pushUndo()
+		if (!this.#project.sceneSections) this.#project.sceneSections = []
+		const section = {
+			id: this.#generateId('section'),
+			name,
+			parentId,
+			collapsed: false
+		}
+		this.#project.sceneSections.push(section)
+		this.#autoSave()
+		this.#emit('scenesChanged', this.#project.scenes)
+		return section
+	}
+
+	removeSceneSection(sectionId) {
+		if (!this.#project.sceneSections) return
+
+		this.#pushUndo()
+
+		// Collect all descendant section IDs
+		const toRemove = new Set()
+		const collect = (id) => {
+			toRemove.add(id)
+			for (const s of this.#project.sceneSections) {
+				if (s.parentId === id) collect(s.id)
+			}
+		}
+		collect(sectionId)
+
+		// Move scenes in deleted sections to the parent of the deleted section
+		const deletedSection = this.#project.sceneSections.find(s => s.id === sectionId)
+		const reparentTo = deletedSection?.parentId ?? null
+		for (const scene of this.#project.scenes) {
+			if (scene.sectionId && toRemove.has(scene.sectionId)) {
+				scene.sectionId = reparentTo
+			}
+		}
+
+		this.#project.sceneSections = this.#project.sceneSections.filter(s => !toRemove.has(s.id))
+		this.#autoSave()
+		this.#emit('scenesChanged', this.#project.scenes)
+	}
+
+	renameSceneSection(sectionId, name) {
+		if (!this.#project.sceneSections) return
+		const section = this.#project.sceneSections.find(s => s.id === sectionId)
+		if (!section) return
+
+		this.#pushUndo()
+		section.name = name
+		this.#autoSave()
+		this.#emit('scenesChanged', this.#project.scenes)
+	}
+
+	toggleSceneSection(sectionId) {
+		if (!this.#project.sceneSections) return
+		const section = this.#project.sceneSections.find(s => s.id === sectionId)
+		if (!section) return
+
+		section.collapsed = !section.collapsed
+		this.#autoSave()
+		this.#emit('scenesChanged', this.#project.scenes)
+	}
+
+	moveSceneSectionToSection(sectionId, targetParentId) {
+		if (!this.#project.sceneSections) return
+		const section = this.#project.sceneSections.find(s => s.id === sectionId)
+		if (!section) return
+
+		// Prevent moving a section into itself or its descendants
+		let check = targetParentId
+		while (check) {
+			if (check === sectionId) return
+			const parent = this.#project.sceneSections.find(s => s.id === check)
+			check = parent?.parentId ?? null
+		}
+
+		this.#pushUndo()
+		section.parentId = targetParentId
+		this.#autoSave()
+		this.#emit('scenesChanged', this.#project.scenes)
+	}
+
+	getScenesInSection(sectionId) {
+		return this.#project.scenes.filter(s => (s.sectionId ?? null) === sectionId)
+	}
+
+	getSubSections(parentId) {
+		if (!this.#project.sceneSections) return []
+		return this.#project.sceneSections.filter(s => (s.parentId ?? null) === parentId)
 	}
 
 	// --- Timeline Nodes ---
@@ -690,6 +812,14 @@ export class EditorState {
 		// Remove folders (editor-only organization)
 		delete script.folders
 
+		// Remove sceneSections (editor-only organization)
+		delete script.sceneSections
+
+		// Remove sectionId from scenes (editor-only field)
+		for (const scene of script.scenes) {
+			delete scene.sectionId
+		}
+
 		// Serialize timeline nodes: flatten data into node, strip id
 		for (const scene of script.scenes) {
 			scene.timeline = scene.timeline.map(node => {
@@ -748,6 +878,16 @@ export class EditorState {
 				if (!this.#project.folders) {
 					this.#project.folders = []
 				}
+				// Ensure sceneSections array exists for backward compatibility
+				if (!this.#project.sceneSections) {
+					this.#project.sceneSections = []
+				}
+				// Ensure scenes have sectionId for backward compatibility
+				for (const scene of this.#project.scenes) {
+					if (scene.sectionId === undefined) {
+						scene.sectionId = null
+					}
+				}
 				// Ensure theme field exists (null = use defaults)
 				if (this.#project.meta.theme === undefined) {
 					this.#project.meta.theme = null
@@ -782,6 +922,7 @@ export class EditorState {
 			},
 			assets: [],
 			folders: [],
+			sceneSections: [],
 			startScene: null,
 			scenes: []
 		}

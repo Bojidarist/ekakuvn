@@ -27,6 +27,7 @@ export class TimelineEditor {
 		this.#elementsEl = document.getElementById('timeline-elements')
 
 		this.#buildElementsPanel()
+		this.#setupListDropZone()
 
 		this.#state.on('timelineChanged', () => this.render())
 		this.#state.on('sceneChanged', () => {
@@ -54,6 +55,7 @@ export class TimelineEditor {
 			const meta = this.#nodeTypes[type]
 			const btn = document.createElement('button')
 			btn.className = 'timeline-element-btn'
+			btn.draggable = true
 			btn.style.setProperty('--node-color', meta.color)
 			btn.innerHTML = `<span class="element-icon">${meta.icon}</span><span class="element-label">${this.#friendlyTypeName(type)}</span>`
 			btn.title = `Add ${this.#friendlyTypeName(type)} node`
@@ -65,8 +67,47 @@ export class TimelineEditor {
 					: undefined
 				this.#state.addTimelineNode(scene.id, { type }, insertIdx)
 			})
+			btn.addEventListener('dragstart', (e) => {
+				e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'new-element', nodeType: type }))
+				e.dataTransfer.effectAllowed = 'copy'
+			})
 			this.#elementsEl.appendChild(btn)
 		}
+	}
+
+	#setupListDropZone() {
+		this.#listEl.addEventListener('dragover', (e) => {
+			e.preventDefault()
+			e.dataTransfer.dropEffect = 'copy'
+			// Only show bottom-border indicator if hovering on the list itself (not a child node)
+			if (e.target === this.#listEl || e.target.closest('#timeline-list') === this.#listEl) {
+				this.#listEl.classList.add('drop-target')
+			}
+		})
+		this.#listEl.addEventListener('dragleave', (e) => {
+			if (!this.#listEl.contains(e.relatedTarget)) {
+				this.#listEl.classList.remove('drop-target')
+			}
+		})
+		this.#listEl.addEventListener('drop', (e) => {
+			this.#listEl.classList.remove('drop-target')
+			// Only handle drops directly on the list (not on child rows, which have their own handler)
+			const row = e.target.closest('.timeline-node')
+			if (row) return
+
+			e.preventDefault()
+			const scene = this.#state.currentScene
+			if (!scene) return
+
+			try {
+				const data = JSON.parse(e.dataTransfer.getData('text/plain'))
+				if (data.type === 'new-element') {
+					this.#state.addTimelineNode(scene.id, { type: data.nodeType })
+				}
+			} catch {
+				// Not a valid drag
+			}
+		})
 	}
 
 	#friendlyTypeName(type) {
@@ -154,13 +195,6 @@ export class TimelineEditor {
 		const actions = document.createElement('span')
 		actions.className = 'node-actions'
 
-		const editBtn = this.#createActionBtn('\u270E', 'Edit')
-		editBtn.addEventListener('click', (e) => {
-			e.stopPropagation()
-			this.#editingNodeId = node.id
-			this.render()
-		})
-
 		const dupBtn = this.#createActionBtn('\u2398', 'Duplicate')
 		dupBtn.addEventListener('click', (e) => {
 			e.stopPropagation()
@@ -174,7 +208,6 @@ export class TimelineEditor {
 			this.#state.removeTimelineNode(scene.id, node.id)
 		})
 
-		actions.appendChild(editBtn)
 		actions.appendChild(dupBtn)
 		actions.appendChild(delBtn)
 
@@ -219,6 +252,8 @@ export class TimelineEditor {
 				const data = JSON.parse(e.dataTransfer.getData('text/plain'))
 				if (data.type === 'timeline-node' && data.index !== index) {
 					this.#state.reorderTimelineNode(scene.id, data.index, index)
+				} else if (data.type === 'new-element') {
+					this.#state.addTimelineNode(scene.id, { type: data.nodeType }, index)
 				}
 			} catch {
 				// Not a valid drag
