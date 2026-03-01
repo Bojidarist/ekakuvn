@@ -1632,3 +1632,215 @@ body.resizing-row {
 	background: var(--accent);
 	color: var(--bg-dark);
 }
+
+/* --- Reusable property panel classes --- */
+
+.props-section-header {
+	color: var(--accent);
+	margin-bottom: 12px;
+	font-size: 14px;
+}
+
+.props-sub-header {
+	color: var(--accent);
+	margin-bottom: 8px;
+	font-size: 13px;
+}
+
+.props-divider {
+	border: none;
+	border-top: 1px solid var(--border);
+	margin: 16px 0;
+}
+
+.props-divider-sm {
+	border: none;
+	border-top: 1px solid var(--border);
+	margin: 12px 0;
+}
+
+.props-hint {
+	font-size: 12px;
+	color: var(--text-secondary);
+	margin-top: 4px;
+	line-height: 1.4;
+}
+
+.props-hint-sm {
+	font-size: 11px;
+	color: var(--text-secondary);
+	line-height: 1.4;
+}
+
+.props-flex-row {
+	display: flex;
+	gap: 6px;
+	align-items: center;
+}
+
+.props-inline-input {
+	padding: 3px 6px;
+	font-size: 12px;
+	border: 1px solid var(--border-color);
+	border-radius: var(--radius);
+	background: var(--bg-dark);
+	color: var(--text-primary);
+	outline: none;
+}
+
+.props-inline-select {
+	flex: 1;
+	padding: 3px 6px;
+	font-size: 12px;
+	border: 1px solid var(--border-color);
+	border-radius: var(--radius);
+	background: var(--bg-dark);
+	color: var(--text-primary);
+	outline: none;
+}
+
+/* --- Timeline editor classes --- */
+
+.timeline-empty {
+	padding: 24px;
+	text-align: center;
+	color: var(--text-secondary);
+	font-size: 13px;
+}
+
+.node-action-btn {
+	padding: 2px 6px;
+	font-size: 11px;
+	border: none;
+	background: transparent;
+	color: var(--text-secondary);
+	cursor: pointer;
+}
+
+.node-action-btn:hover {
+	color: var(--text-primary);
+}
+
+.node-action-btn-danger {
+	color: var(--danger);
+}
+
+.node-action-btn-danger:hover {
+	color: var(--danger);
+}
+
+/* --- Node renderer classes --- */
+
+.expr-row {
+	display: flex;
+	gap: 6px;
+	align-items: center;
+	margin-bottom: 6px;
+}
+
+.expr-name {
+	font-size: 12px;
+	color: var(--text-primary);
+	min-width: 60px;
+	font-weight: 500;
+}
+
+.expr-asset {
+	flex: 1;
+	font-size: 12px;
+	color: var(--text-secondary);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.expr-remove-btn {
+	padding: 2px 6px;
+	font-size: 10px;
+	border: none;
+	background: transparent;
+	color: var(--text-secondary);
+	cursor: pointer;
+}
+
+.expr-remove-btn:hover {
+	color: var(--danger);
+}
+
+.choice-card {
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: 8px;
+	margin-bottom: 8px;
+}
+
+.choice-label {
+	font-size: 11px;
+	color: var(--text-secondary);
+	margin-bottom: 4px;
+	font-weight: 500;
+}
+
+.choice-remove-btn {
+	padding: 2px 8px;
+	font-size: 11px;
+	color: var(--danger);
+	border: 1px solid var(--danger);
+	border-radius: var(--radius);
+	background: transparent;
+	cursor: pointer;
+	margin-top: 4px;
+}
+
+.choice-remove-btn:hover {
+	background: var(--danger);
+	color: white;
+}
+
+.props-delete-btn {
+	margin-top: 16px;
+	width: 100%;
+	color: var(--danger);
+	border-color: var(--danger);
+}
+
+.props-full-btn {
+	width: 100%;
+	font-size: 13px;
+}
+
+.props-add-choice-btn {
+	width: 100%;
+	font-size: 12px;
+	margin-top: 4px;
+}
+
+.props-status-text {
+	font-size: 12px;
+	color: var(--text-secondary);
+	margin-bottom: 8px;
+}
+
+.props-placeholder-text {
+	font-size: 13px;
+	color: var(--text-secondary);
+	padding: 4px 0;
+}
+
+/* --- Context menu section label --- */
+
+.context-menu-section-label {
+	color: var(--text-secondary);
+	cursor: default;
+	font-size: 11px;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+}
+
+/* --- Search highlight --- */
+
+.search-highlight {
+	background: var(--accent-dim);
+	color: var(--accent);
+	border-radius: 2px;
+}
