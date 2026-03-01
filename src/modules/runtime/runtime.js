@@ -277,7 +277,7 @@ export class EkakuRuntime {
 	}
 
 	loadFromSlot(slotName) {
-		this.#menuScreen.removeListeners()
+		this.#menuScreen.hide()
 		this.#phase = 'playing'
 		this.#started = true
 		this.#paused = false
