@@ -5,7 +5,7 @@ const game = new Ekakuvn()
 
 // Check for a script URL passed as a query parameter (used by editor preview)
 const params = new URLSearchParams(window.location.search)
-const scriptUrl = params.get('script') || 'docs/example-script.json'
+const scriptUrl = params.get('script') || 'docs/examples/demo/demo-project.evn'
 
 async function loadScript(url) {
 	const res = await fetch(url)
