@@ -40,7 +40,10 @@ const settingsModal = new SettingsModal(state)
 
 document.getElementById('btn-new').addEventListener('click', async () => {
 	if (!await EditorModal.confirm('Start a new project? Unsaved changes will be lost.')) return
+	const name = await EditorModal.prompt('Project Name', '', 'Untitled Project')
+	if (name === null) return
 	state.newProject()
+	if (name.trim()) state.updateMeta('title', name.trim())
 	const scene = state.addScene('scene-intro')
 	state.selectScene(scene.id)
 })
@@ -159,12 +162,14 @@ document.addEventListener('keydown', (e) => {
 		serializer.openImportDialog()
 	} else if (ctrl && e.key === 'p') {
 		e.preventDefault()
-		EditorModal.confirm('Start a new project? Unsaved changes will be lost.').then((ok) => {
-			if (ok) {
-				state.newProject()
-				const scene = state.addScene('scene-intro')
-				state.selectScene(scene.id)
-			}
+		EditorModal.confirm('Start a new project? Unsaved changes will be lost.').then(async (ok) => {
+			if (!ok) return
+			const name = await EditorModal.prompt('Project Name', '', 'Untitled Project')
+			if (name === null) return
+			state.newProject()
+			if (name.trim()) state.updateMeta('title', name.trim())
+			const scene = state.addScene('scene-intro')
+			state.selectScene(scene.id)
 		})
 	} else if (ctrl && e.key === 'd') {
 		e.preventDefault()

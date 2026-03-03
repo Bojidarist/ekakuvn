@@ -120,9 +120,10 @@ export class EditorModal {
 	 * Show a prompt dialog with a message, input field, OK and Cancel buttons.
 	 * @param {string} message
 	 * @param {string} [defaultValue='']
+	 * @param {string} [placeholder='']
 	 * @returns {Promise<string|null>} The entered value, or null if cancelled.
 	 */
-	static prompt(message, defaultValue = '') {
+	static prompt(message, defaultValue = '', placeholder = '') {
 		return new Promise((resolve) => {
 			const { overlay, modal } = EditorModal.#createBase()
 
@@ -138,6 +139,7 @@ export class EditorModal {
 			input.type = 'text'
 			input.className = 'editor-modal-input'
 			input.value = defaultValue
+			input.placeholder = placeholder
 			body.appendChild(input)
 
 			modal.appendChild(body)
