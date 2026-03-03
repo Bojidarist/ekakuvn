@@ -1,101 +1,16 @@
 /**
- * Theme editor modal with collapsible sections for customizing runtime theme.
- * Manages the overlay, modal lifecycle, and all theme property controls.
+ * Theme editor content builder.
+ * Provides buildContent(container) for use by SettingsModal.
  */
 
 export class ThemeEditor {
 	#state = null
-	#themeOverlay = null
 
 	constructor(state) {
 		this.#state = state
 	}
 
-	get isOpen() {
-		return this.#themeOverlay !== null
-	}
-
-	open() {
-		if (this.#themeOverlay) return
-
-		const overlay = document.createElement('div')
-		overlay.className = 'theme-editor-overlay'
-
-		const modal = document.createElement('div')
-		modal.className = 'theme-editor-modal'
-
-		// Header
-		const modalHeader = document.createElement('div')
-		modalHeader.className = 'theme-editor-header'
-
-		const title = document.createElement('h3')
-		title.textContent = 'Theme Editor'
-		modalHeader.appendChild(title)
-
-		const closeBtn = document.createElement('button')
-		closeBtn.className = 'theme-editor-close'
-		closeBtn.textContent = '\u2715'
-		closeBtn.title = 'Close'
-		closeBtn.addEventListener('click', () => this.close())
-		modalHeader.appendChild(closeBtn)
-
-		modal.appendChild(modalHeader)
-
-		// Scrollable body
-		const body = document.createElement('div')
-		body.className = 'theme-editor-body'
-
-		this.#buildContent(body)
-
-		modal.appendChild(body)
-
-		// Footer
-		const footer = document.createElement('div')
-		footer.className = 'theme-editor-footer'
-
-		const resetBtn = document.createElement('button')
-		resetBtn.textContent = 'Reset All to Defaults'
-		resetBtn.className = 'theme-editor-reset'
-		resetBtn.addEventListener('click', () => {
-			this.#state.updateMeta('theme', null)
-			body.innerHTML = ''
-			this.#buildContent(body)
-		})
-		footer.appendChild(resetBtn)
-
-		const doneBtn = document.createElement('button')
-		doneBtn.textContent = 'Done'
-		doneBtn.className = 'theme-editor-done'
-		doneBtn.addEventListener('click', () => this.close())
-		footer.appendChild(doneBtn)
-
-		modal.appendChild(footer)
-
-		overlay.appendChild(modal)
-
-		// Close on backdrop click
-		overlay.addEventListener('click', (e) => {
-			if (e.target === overlay) this.close()
-		})
-
-		// Close on Escape
-		const onKey = (e) => {
-			if (e.key === 'Escape') this.close()
-		}
-		document.addEventListener('keydown', onKey)
-
-		this.#themeOverlay = { overlay, onKey }
-		document.body.appendChild(overlay)
-	}
-
-	close() {
-		if (!this.#themeOverlay) return
-		document.removeEventListener('keydown', this.#themeOverlay.onKey)
-		this.#themeOverlay.overlay.remove()
-		this.#themeOverlay = null
-	}
-
-	#buildContent(container) {
+	buildContent(container) {
 		const meta = this.#state.project.meta
 		const theme = meta.theme ?? {}
 

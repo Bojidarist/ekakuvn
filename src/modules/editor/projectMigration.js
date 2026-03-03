@@ -132,6 +132,11 @@ export function migrateProject(project) {
 		}
 	}
 
+	// Ensure version field exists for backward compatibility
+	if (!project.meta.version) {
+		project.meta.version = '1.0.0'
+	}
+
 	// Ensure theme field exists (null = use defaults)
 	if (project.meta.theme === undefined) {
 		project.meta.theme = null

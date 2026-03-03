@@ -2,19 +2,16 @@ import { formatFileSize } from '../shared/utils.js'
 import { createAudioPlayer } from '../shared/audioPlayerBuilder.js'
 import { addGroup, addSelect, addCheckbox, addReadonly, addRow } from './properties/formControls.js'
 import { renderTimelineNodeProps } from './properties/nodeRenderers.js'
-import { ThemeEditor } from './properties/themeEditor.js'
 
 export class PropertiesPanel {
 	#state = null
 	#contentEl = null
 	#selectedAssetId = null
 	#propAudio = null
-	#themeEditor = null
 
 	constructor(state) {
 		this.#state = state
 		this.#contentEl = document.getElementById('properties-content')
-		this.#themeEditor = new ThemeEditor(state)
 
 		this.#state.on('selectionChanged', () => {
 			// When a timeline node is selected on canvas, clear asset selection display
@@ -49,10 +46,6 @@ export class PropertiesPanel {
 		})
 
 		this.render()
-	}
-
-	openThemeEditor() {
-		this.#themeEditor.open()
 	}
 
 	render() {
@@ -137,58 +130,6 @@ export class PropertiesPanel {
 		hint.textContent = 'The title screen is shown before gameplay starts. If no background is set, a solid color is used.'
 		hint.className = 'props-hint'
 		this.#contentEl.appendChild(hint)
-
-		// --- Theme ---
-		this.#renderThemeSection(meta)
-	}
-
-	#renderThemeSection(meta) {
-		const divider = document.createElement('hr')
-		divider.className = 'props-divider'
-		this.#contentEl.appendChild(divider)
-
-		const header = document.createElement('h4')
-		header.textContent = 'Theme'
-		header.className = 'props-section-header'
-		header.style.marginBottom = '8px'
-		this.#contentEl.appendChild(header)
-
-		const themeHint = document.createElement('div')
-		themeHint.textContent = 'Customize how the game looks at runtime: colors, fonts, dialogue box, menus, and more.'
-		themeHint.className = 'props-hint'
-		themeHint.style.marginBottom = '12px'
-		this.#contentEl.appendChild(themeHint)
-
-		// Show current theme status
-		const theme = meta.theme
-		const status = document.createElement('div')
-		status.className = 'props-status-text'
-		if (theme && Object.keys(theme).length > 0) {
-			const count = this.#countThemeOverrides(theme)
-			status.textContent = `${count} custom override${count !== 1 ? 's' : ''} set`
-			status.style.color = 'var(--accent)'
-		} else {
-			status.textContent = 'Using default theme'
-		}
-		this.#contentEl.appendChild(status)
-
-		const editBtn = document.createElement('button')
-		editBtn.textContent = 'Edit Theme\u2026'
-		editBtn.className = 'props-full-btn'
-		editBtn.addEventListener('click', () => this.openThemeEditor())
-		this.#contentEl.appendChild(editBtn)
-	}
-
-	#countThemeOverrides(obj) {
-		let count = 0
-		for (const val of Object.values(obj)) {
-			if (val && typeof val === 'object' && !Array.isArray(val)) {
-				count += this.#countThemeOverrides(val)
-			} else {
-				count++
-			}
-		}
-		return count
 	}
 
 	#renderSceneProps(scene) {

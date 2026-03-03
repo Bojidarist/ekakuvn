@@ -8,6 +8,7 @@ import { ScriptSerializer } from '../modules/editor/scriptSerializer.js'
 import { PanelResizer } from '../modules/editor/panelResizer.js'
 import { EkakuConfig } from '../modules/ekakuConfig.js'
 import { EditorModal } from '../modules/editor/editorModal.js'
+import { SettingsModal } from '../modules/editor/settingsModal.js'
 
 // --- Initialize state ---
 
@@ -33,6 +34,7 @@ const sceneManager = new SceneManagerPanel(state)
 const propertiesPanel = new PropertiesPanel(state)
 const timelineEditor = new TimelineEditor(state)
 const serializer = new ScriptSerializer(state)
+const settingsModal = new SettingsModal(state)
 
 // --- Toolbar buttons ---
 
@@ -59,8 +61,8 @@ document.getElementById('btn-preview').addEventListener('click', () => {
 	openPlayPreview()
 })
 
-document.getElementById('btn-theme').addEventListener('click', () => {
-	propertiesPanel.openThemeEditor()
+document.getElementById('btn-settings').addEventListener('click', () => {
+	settingsModal.open()
 })
 
 // --- Play Preview (embedded iframe) ---
