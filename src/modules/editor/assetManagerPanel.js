@@ -76,7 +76,6 @@ export class AssetManagerPanel {
 		// Listen for state changes
 		this.#state.on('assetsChanged', () => {
 			this.render()
-			this.#updateUsageBar()
 		})
 		this.#state.on('foldersChanged', () => this.render())
 		this.#state.on('projectChanged', () => {
@@ -87,7 +86,6 @@ export class AssetManagerPanel {
 			this.#preview.close()
 			this.#state.emit('assetSelectionChanged', null)
 			this.render()
-			this.#updateUsageBar()
 		})
 
 		// Handle preview request from properties panel
@@ -135,6 +133,7 @@ export class AssetManagerPanel {
 		this.#containerEl.appendChild(this.#usageBarEl)
 
 		this.#updateUsageBar()
+		setInterval(() => this.#updateUsageBar(), 5000)
 
 		this.render()
 	}

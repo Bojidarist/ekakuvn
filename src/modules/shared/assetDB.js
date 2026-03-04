@@ -17,6 +17,7 @@ const STORE_NAME = 'assets'
 class AssetDB {
 	#db = null
 	#openPromise = null
+	#totalBytes = 0   // running total of stored blob sizes — updated on every write/delete
 
 	/**
 	 * Open (or reuse) the IndexedDB connection.
@@ -38,6 +39,9 @@ class AssetDB {
 
 			request.onsuccess = (event) => {
 				this.#db = event.target.result
+				// Seed the in-memory size counter from existing IDB contents so the
+				// usage bar is accurate immediately on page load without a full scan.
+				this.#seedTotalBytes()
 				resolve()
 			}
 
@@ -49,6 +53,23 @@ class AssetDB {
 		return this.#openPromise
 	}
 
+	/** Sum blob sizes of all existing entries to seed #totalBytes on open. */
+	#seedTotalBytes() {
+		try {
+			const tx = this.#db.transaction(STORE_NAME, 'readonly')
+			const store = tx.objectStore(STORE_NAME)
+			const request = store.openCursor()
+			request.onsuccess = (event) => {
+				const cursor = event.target.result
+				if (!cursor) return
+				this.#totalBytes += cursor.value.blob?.size ?? 0
+				cursor.continue()
+			}
+		} catch {
+			// Non-critical — bar will just show 0 until next write
+		}
+	}
+
 	/**
 	 * Store or update an asset from a File or Blob.
 	 * Blobs avoid the structured-clone string size limit that affects large videos.
@@ -58,6 +79,10 @@ class AssetDB {
 	 */
 	async put(id, blob) {
 		await this.open()
+		// Subtract old size if replacing an existing entry
+		const old = await this.getBlob(id)
+		if (old) this.#totalBytes -= old.size
+		this.#totalBytes += blob.size
 		return new Promise((resolve, reject) => {
 			const tx = this.#db.transaction(STORE_NAME, 'readwrite')
 			const store = tx.objectStore(STORE_NAME)
@@ -141,6 +166,8 @@ class AssetDB {
 	 */
 	async delete(id) {
 		await this.open()
+		const old = await this.getBlob(id)
+		if (old) this.#totalBytes -= old.size
 		return new Promise((resolve, reject) => {
 			const tx = this.#db.transaction(STORE_NAME, 'readwrite')
 			const store = tx.objectStore(STORE_NAME)
@@ -158,6 +185,10 @@ class AssetDB {
 	async deleteMany(ids) {
 		if (!ids || ids.length === 0) return
 		await this.open()
+		for (const id of ids) {
+			const old = await this.getBlob(id)
+			if (old) this.#totalBytes -= old.size
+		}
 		return new Promise((resolve, reject) => {
 			const tx = this.#db.transaction(STORE_NAME, 'readwrite')
 			const store = tx.objectStore(STORE_NAME)
@@ -187,6 +218,7 @@ class AssetDB {
 	 */
 	async clearAll() {
 		await this.open()
+		this.#totalBytes = 0
 		return new Promise((resolve, reject) => {
 			const tx = this.#db.transaction(STORE_NAME, 'readwrite')
 			const store = tx.objectStore(STORE_NAME)
@@ -197,22 +229,23 @@ class AssetDB {
 	}
 
 	/**
-	 * Uses navigator.storage.estimate() when available.
+	 * Returns the current storage usage.
+	 * `used` is tracked in-memory (updated immediately on every put/delete/clear)
+	 * so the value is always current without waiting for the browser to flush.
+	 * `quota` still comes from navigator.storage.estimate() since it is stable.
 	 * @returns {Promise<{ used: number, quota: number }>}
 	 */
 	async getUsage() {
+		let quota = 0
 		try {
 			if (navigator.storage && navigator.storage.estimate) {
 				const estimate = await navigator.storage.estimate()
-				return {
-					used: estimate.usage ?? 0,
-					quota: estimate.quota ?? 0
-				}
+				quota = estimate.quota ?? 0
 			}
 		} catch {
 			// API unavailable or permission denied
 		}
-		return { used: 0, quota: 0 }
+		return { used: this.#totalBytes, quota }
 	}
 }
 
