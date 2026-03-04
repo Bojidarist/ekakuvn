@@ -1,3 +1,5 @@
+import { assetDB } from '../shared/assetDB.js'
+
 export class AssetLoader {
 	#assets = new Map()
 	#totalCount = 0
@@ -46,7 +48,24 @@ export class AssetLoader {
 
 	async #loadAsset(entry) {
 		const { id, type, path, dataUrl } = entry
-		const src = dataUrl || path
+		// Use embedded dataUrl first; fall back to IDB; last resort: path (only if
+		// it looks like a resolvable URL — bare filenames aren't valid in the runtime).
+		let src = dataUrl || null
+
+		if (!src) {
+			src = await assetDB.get(id) ?? null
+		}
+
+		if (!src && path && /^(https?:|blob:|data:|\/)/i.test(path)) {
+			src = path
+		}
+
+		if (!src) {
+			console.warn(`AssetLoader: no source for "${id}" — skipping`)
+			this.#loadedCount++
+			this.#emitProgress()
+			return
+		}
 
 		try {
 			let resource = null
@@ -105,27 +124,27 @@ export class AssetLoader {
 		})
 	}
 
-	#loadVideo(path) {
+	#loadVideo(src) {
 		return new Promise((resolve, reject) => {
 			const video = document.createElement('video')
-			video.preload = 'auto'
+			video.preload = 'metadata'
 			video.muted = true
 
-			const onCanPlay = () => {
-				video.removeEventListener('canplaythrough', onCanPlay)
+			const onMeta = () => {
+				video.removeEventListener('loadedmetadata', onMeta)
 				video.removeEventListener('error', onError)
 				resolve(video)
 			}
 
 			const onError = () => {
-				video.removeEventListener('canplaythrough', onCanPlay)
+				video.removeEventListener('loadedmetadata', onMeta)
 				video.removeEventListener('error', onError)
-				reject(new Error(`Failed to load video: ${path}`))
+				reject(new Error(`Failed to load video: ${src}`))
 			}
 
-			video.addEventListener('canplaythrough', onCanPlay)
+			video.addEventListener('loadedmetadata', onMeta)
 			video.addEventListener('error', onError)
-			video.src = path
+			video.src = src
 			video.load()
 		})
 	}

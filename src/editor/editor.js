@@ -14,8 +14,9 @@ import { SettingsModal } from '../modules/editor/settingsModal.js'
 
 const state = new EditorState()
 
-// Try to restore from auto-save, otherwise start fresh
-if (!state.tryRestoreFromAutoSave()) {
+// Try to restore from auto-save (async — re-hydrates asset dataUrls from IndexedDB)
+const restored = await state.tryRestoreFromAutoSave()
+if (!restored) {
 	// Create a default first scene so the editor isn't empty
 	const scene = state.addScene('scene-intro')
 	state.selectScene(scene.id)

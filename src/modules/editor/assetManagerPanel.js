@@ -2,6 +2,8 @@ import { createMenuContainer, createMenuOption, createMenuSeparator, autoCloseMe
 import { handleFiles, onAssetDragStart, onGridDrop } from './assets/assetImporter.js'
 import { AssetPreview } from './assets/assetPreview.js'
 import { renderBreadcrumb, renderFolderItem, createInlineInput, highlightLabel } from './assets/folderNavigation.js'
+import { assetDB } from '../shared/assetDB.js'
+import { formatFileSize } from '../shared/utils.js'
 
 export class AssetManagerPanel {
 	#state = null
@@ -16,6 +18,9 @@ export class AssetManagerPanel {
 	#searchQuery = ''
 	#editingId = null
 	#preview = null
+	#usageBarEl = null
+	#usageFillEl = null
+	#usageLabelEl = null
 
 	constructor(state) {
 		this.#state = state
@@ -69,7 +74,10 @@ export class AssetManagerPanel {
 		})
 
 		// Listen for state changes
-		this.#state.on('assetsChanged', () => this.render())
+		this.#state.on('assetsChanged', () => {
+			this.render()
+			this.#updateUsageBar()
+		})
 		this.#state.on('foldersChanged', () => this.render())
 		this.#state.on('projectChanged', () => {
 			this.#currentFolderId = null
@@ -79,6 +87,7 @@ export class AssetManagerPanel {
 			this.#preview.close()
 			this.#state.emit('assetSelectionChanged', null)
 			this.render()
+			this.#updateUsageBar()
 		})
 
 		// Handle preview request from properties panel
@@ -105,6 +114,27 @@ export class AssetManagerPanel {
 		this.#gridEl.addEventListener('drop', (e) => {
 			onGridDrop(e, this.#state, this.#currentFolderId)
 		})
+
+		// Build usage bar (appended after the grid)
+		this.#usageBarEl = document.createElement('div')
+		this.#usageBarEl.className = 'asset-usage-bar'
+
+		const track = document.createElement('div')
+		track.className = 'asset-usage-track'
+
+		this.#usageFillEl = document.createElement('div')
+		this.#usageFillEl.className = 'asset-usage-fill'
+		track.appendChild(this.#usageFillEl)
+
+		this.#usageLabelEl = document.createElement('span')
+		this.#usageLabelEl.className = 'asset-usage-label'
+		this.#usageLabelEl.textContent = 'Storage: \u2026'
+
+		this.#usageBarEl.appendChild(track)
+		this.#usageBarEl.appendChild(this.#usageLabelEl)
+		this.#containerEl.appendChild(this.#usageBarEl)
+
+		this.#updateUsageBar()
 
 		this.render()
 	}
@@ -352,6 +382,21 @@ export class AssetManagerPanel {
 		if (input) {
 			input.focus()
 			input.select()
+		}
+	}
+
+	async #updateUsageBar() {
+		const { used, quota } = await assetDB.getUsage()
+		if (!this.#usageFillEl || !this.#usageLabelEl) return
+
+		if (quota > 0) {
+			const pct = Math.min(100, (used / quota) * 100)
+			this.#usageFillEl.style.width = pct + '%'
+			this.#usageFillEl.classList.toggle('near-full', pct > 85)
+			this.#usageLabelEl.textContent = `Storage: ${formatFileSize(used)} / ${formatFileSize(quota)}`
+		} else {
+			this.#usageFillEl.style.width = '0%'
+			this.#usageLabelEl.textContent = `Storage: ${formatFileSize(used)}`
 		}
 	}
 }

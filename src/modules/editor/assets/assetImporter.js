@@ -3,28 +3,72 @@
  * and drag-and-drop handlers for moving assets/folders.
  */
 
+import { assetDB } from '../../shared/assetDB.js'
+import { spinner } from '../loadingSpinner.js'
+
 /**
  * Process selected files and add them as assets to the state.
+ * Binary data is stored in IndexedDB; only metadata is kept in the project JSON.
+ *
+ * For image files a FileReader is used to obtain a dataUrl for dimension
+ * inference and in-memory thumbnail use.  For audio/video the FileReader is
+ * skipped entirely — reading a 1+ GB file as base64 can exhaust memory and
+ * silently abort.  Instead the raw File is stored in IDB and a blob URL is
+ * created for in-memory use.
  */
 export function handleFiles(files, state, currentFolderId, fileInput) {
 	if (!files || files.length === 0) return
 
 	for (const file of files) {
-		const reader = new FileReader()
-		reader.onload = async (e) => {
-			const dataUrl = e.target.result
-			const name = file.name.replace(/\.[^.]+$/, '')
-			const type = await inferAssetType(file, dataUrl)
+		if (file.type.startsWith('image/')) {
+			// Images: read as dataUrl for dimension inference + thumbnail
+			const reader = new FileReader()
+			reader.onload = async (e) => {
+				await spinner.wrap('Importing asset…', async () => {
+					const dataUrl = e.target.result
+					const name = file.name.replace(/\.[^.]+$/, '')
+					const type = await inferAssetType(file, dataUrl)
 
-			state.addAsset({
-				type,
-				path: file.name,
-				dataUrl,
-				name,
-				folderId: currentFolderId
-			})
+					const asset = state.addAsset({
+						type,
+						path: file.name,
+						dataUrl: null,
+						name,
+						folderId: currentFolderId
+					})
+
+					// Store raw File (Blob) in IndexedDB — avoids structured-clone limit
+					await assetDB.put(asset.id, file)
+
+					// Cache dataUrl in-memory for canvas/thumbnails; stripped from localStorage
+					state.updateAssetInMemory(asset.id, { dataUrl })
+				})
+			}
+			reader.readAsDataURL(file)
+		} else {
+			// Audio / video: skip FileReader to avoid loading large files into memory
+			;(async () => {
+				await spinner.wrap('Importing asset…', async () => {
+					const name = file.name.replace(/\.[^.]+$/, '')
+					const type = await inferAssetType(file, null)
+
+					const asset = state.addAsset({
+						type,
+						path: file.name,
+						dataUrl: null,
+						name,
+						folderId: currentFolderId
+					})
+
+					// Store raw File (Blob) in IndexedDB
+					await assetDB.put(asset.id, file)
+
+					// Create a blob URL for in-memory use (canvas, preview)
+					const blobUrl = URL.createObjectURL(file)
+					state.updateAssetInMemory(asset.id, { dataUrl: blobUrl })
+				})
+			})()
 		}
-		reader.readAsDataURL(file)
 	}
 
 	// Reset file input so same file can be selected again
@@ -33,6 +77,8 @@ export function handleFiles(files, state, currentFolderId, fileInput) {
 
 /**
  * Infer the asset type from file name patterns and image dimensions.
+ * @param {File} file
+ * @param {string|null} dataUrl - Base64 data URL; may be null for non-image files.
  */
 export async function inferAssetType(file, dataUrl) {
 	// Filename-based hints take priority
@@ -46,13 +92,15 @@ export async function inferAssetType(file, dataUrl) {
 
 	if (file.type.startsWith('image/')) {
 		// Dimension-based heuristic: landscape images >= 960px wide are backgrounds
-		try {
-			const { width, height } = await getImageDimensions(dataUrl)
-			if (width >= height && width >= 960) {
-				return 'background'
+		if (dataUrl) {
+			try {
+				const { width, height } = await getImageDimensions(dataUrl)
+				if (width >= height && width >= 960) {
+					return 'background'
+				}
+			} catch {
+				// Fall through to default
 			}
-		} catch {
-			// Fall through to default
 		}
 		return 'character'
 	}

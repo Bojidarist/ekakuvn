@@ -1,6 +1,9 @@
 import { EditorModal } from './editorModal.js'
 import { generateId } from '../shared/utils.js'
-import { gzipCompress, gzipDecompress, isGzipped, readAsJson } from '../shared/compression.js'
+import { gzipCompress, isGzipped, readAsJson } from '../shared/compression.js'
+import { assetDB } from '../shared/assetDB.js'
+import { zipAsync, unzipAsync } from '../shared/archiveUtils.js'
+import { spinner } from './loadingSpinner.js'
 
 export class ScriptSerializer {
 	#state = null
@@ -31,21 +34,61 @@ export class ScriptSerializer {
 			if (!await EditorModal.confirm(msg)) return
 		}
 
-		const script = this.#state.toScript()
-		const json = JSON.stringify(script, null, '\t')
-		const title = this.#state.project.meta.title ?? 'untitled'
-		const filename = this.#slugify(title) + '.evn'
-		const compressed = await gzipCompress(json)
-		this.#downloadBlob(filename, new Blob([compressed], { type: 'application/gzip' }))
+		await spinner.wrap('Exporting…', async () => {
+			// Ensure all assets have their dataUrl populated from IndexedDB
+			await this.#hydrateAssetsForExport()
+
+			const script = this.#state.toScript()
+			const json = JSON.stringify(script, null, '\t')
+			const title = this.#state.project.meta.title ?? 'untitled'
+			const filename = this.#slugify(title) + '.evn'
+			const compressed = await gzipCompress(json)
+			this.#downloadBlob(filename, new Blob([compressed], { type: 'application/gzip' }))
+		})
 	}
 
 	async exportProjectToFile() {
-		const project = structuredClone(this.#state.project)
-		const json = JSON.stringify(project, null, '\t')
-		const title = project.meta.title ?? 'untitled'
-		const filename = this.#slugify(title) + '.ekaku-project.evn'
-		const compressed = await gzipCompress(json)
-		this.#downloadBlob(filename, new Blob([compressed], { type: 'application/gzip' }))
+		await spinner.wrap('Saving…', async () => {
+			const project = structuredClone(this.#state.project)
+
+			// Strip dataUrls — assets are stored as separate files in the zip
+			for (const asset of project.assets) {
+				asset.dataUrl = null
+			}
+
+			const title = project.meta.title ?? 'untitled'
+			const filename = this.#slugify(title) + '.ekaku-project.evn'
+
+			// Build zip entries: project.json + one file per asset
+			const files = {}
+			files['project.json'] = new TextEncoder().encode(JSON.stringify(project, null, '\t'))
+
+			for (const asset of project.assets) {
+				const blob = await assetDB.getBlob(asset.id)
+				if (!blob) continue
+				const ext = asset.path ? asset.path.split('.').pop() : mimeToExt(blob.type)
+				files[`assets/${asset.id}.${ext}`] = new Uint8Array(await blob.arrayBuffer())
+			}
+
+			const zipBlob = await zipAsync(files)
+			this.#downloadBlob(filename, zipBlob)
+		})
+	}
+
+	/**
+	 * Populate each asset's in-memory dataUrl from IndexedDB when it is missing.
+	 * Uses getDataUrl() (base64) rather than get() (blob URL) because the result
+	 * must be embeddable in the exported JSON file.
+	 * Only used for the runtime .evn export (images only).
+	 */
+	async #hydrateAssetsForExport() {
+		for (const asset of this.#state.project.assets) {
+			if (!asset.dataUrl || asset.dataUrl.startsWith('blob:')) {
+				// For video/audio: base64 in JSON is not viable — omit; runtime will need path
+				if (asset.type === 'video' || asset.type === 'music' || asset.type === 'sound') continue
+				asset.dataUrl = await assetDB.getDataUrl(asset.id) ?? null
+			}
+		}
 	}
 
 	// --- Validation ---
@@ -186,13 +229,23 @@ export class ScriptSerializer {
 	// --- Import ---
 
 	#importFile(file) {
+		// New format: .evn project archive (ZIP) — detect by magic bytes or old .zip extension
+		// We read the first 4 bytes to check for the ZIP magic number PK\x03\x04
 		const reader = new FileReader()
 		reader.onload = async (e) => {
 			try {
 				const buffer = e.target.result
-				const json = await readAsJson(buffer)
-				const data = JSON.parse(json)
-				this.#loadData(data)
+				if (isZipBuffer(buffer)) {
+					await spinner.wrap('Opening project…', () => this.#importZipProject(file, buffer))
+					return
+				}
+
+				// Legacy format: .evn (gzip JSON) or plain JSON
+				await spinner.wrap('Opening project…', async () => {
+					const json = await readAsJson(buffer)
+					const data = JSON.parse(json)
+					await this.#loadData(data)
+				})
 			} catch {
 				EditorModal.alert('Failed to parse file. Make sure it is a valid .evn or JSON file.')
 			}
@@ -203,7 +256,44 @@ export class ScriptSerializer {
 		reader.readAsArrayBuffer(file)
 	}
 
-	#loadData(data) {
+	async #importZipProject(file, buffer) {
+		try {
+			const entries = await unzipAsync(new Uint8Array(buffer ?? await file.arrayBuffer()))
+
+			// Parse project.json
+			if (!entries['project.json']) {
+				EditorModal.alert('Invalid project zip: missing project.json')
+				return
+			}
+			const json = new TextDecoder().decode(entries['project.json'])
+			const project = JSON.parse(json)
+
+			// Clear stale localStorage and IDB *before* storing the new blobs so
+			// that loadProjectFromFile can find them.  (loadProjectFromFile would
+			// normally do this itself, but that would wipe the blobs we are about
+			// to write — so we pass skipStorageClear=true below.)
+			await this.#state.clearStorage()
+
+			// Restore asset blobs into IndexedDB
+			for (const [path, bytes] of Object.entries(entries)) {
+				if (!path.startsWith('assets/')) continue
+				// Filename: assets/<id>.<ext>
+				const filename = path.slice('assets/'.length)
+				const dotIdx = filename.lastIndexOf('.')
+				const id = dotIdx >= 0 ? filename.slice(0, dotIdx) : filename
+				const ext = dotIdx >= 0 ? filename.slice(dotIdx + 1) : ''
+				const mimeType = extToMime(ext)
+				const blob = new Blob([bytes], { type: mimeType })
+				await assetDB.put(id, blob)
+			}
+
+			await this.#loadData(project, true)
+		} catch (err) {
+			EditorModal.alert('Failed to open project zip: ' + err.message)
+		}
+	}
+
+	async #loadData(data, skipStorageClear = false) {
 		// Validate basic structure
 		if (!data || typeof data !== 'object') {
 			EditorModal.alert('Invalid file format.')
@@ -218,11 +308,11 @@ export class ScriptSerializer {
 			) || Array.isArray(data.sceneSections) || Array.isArray(data.folders)
 
 			if (hasEditorFields) {
-				// Full editor project -- load directly (migration happens in loadProject)
-				this.#state.loadProject(data)
+				// Full editor project -- load via async path to migrate assets into IndexedDB
+				await this.#state.loadProjectFromFile(data, skipStorageClear)
 			} else {
 				// Runtime script -- convert to editor format
-				this.#importRuntimeScript(data)
+				await this.#importRuntimeScript(data, skipStorageClear)
 			}
 			return
 		}
@@ -230,7 +320,7 @@ export class ScriptSerializer {
 		EditorModal.alert('Unrecognized file format. Expected an ekaku script or project file.')
 	}
 
-	#importRuntimeScript(script) {
+	async #importRuntimeScript(script, skipStorageClear = false) {
 		// Convert a runtime script to editor project format
 		const project = structuredClone(script)
 
@@ -352,10 +442,8 @@ export class ScriptSerializer {
 			scene.transition = scene.transition ?? { type: 'fade', duration: 0.5 }
 		}
 
-		this.#state.loadProject(project)
+		await this.#state.loadProjectFromFile(project, skipStorageClear)
 	}
-
-	// --- Helpers ---
 
 	#downloadBlob(filename, blob) {
 		const url = URL.createObjectURL(blob)
@@ -375,4 +463,48 @@ export class ScriptSerializer {
 			.replace(/^-+|-+$/g, '')
 			|| 'untitled'
 	}
+}
+
+// --- Format detection ---
+
+/**
+ * Return true if the ArrayBuffer starts with the ZIP magic bytes PK\x03\x04.
+ * Used to distinguish ZIP project archives from gzip runtime scripts when both
+ * share the .evn extension.
+ * @param {ArrayBuffer} buffer
+ */
+function isZipBuffer(buffer) {
+	if (buffer.byteLength < 4) return false
+	const view = new Uint8Array(buffer, 0, 4)
+	return view[0] === 0x50 && view[1] === 0x4B && view[2] === 0x03 && view[3] === 0x04
+}
+
+// --- MIME / extension helpers ---
+
+const MIME_TO_EXT = {
+	'image/png': 'png',
+	'image/jpeg': 'jpg',
+	'image/gif': 'gif',
+	'image/webp': 'webp',
+	'image/avif': 'avif',
+	'image/svg+xml': 'svg',
+	'audio/mpeg': 'mp3',
+	'audio/ogg': 'ogg',
+	'audio/wav': 'wav',
+	'audio/flac': 'flac',
+	'audio/aac': 'aac',
+	'video/mp4': 'mp4',
+	'video/webm': 'webm',
+	'video/ogg': 'ogv',
+	'video/quicktime': 'mov',
+}
+
+const EXT_TO_MIME = Object.fromEntries(Object.entries(MIME_TO_EXT).map(([m, e]) => [e, m]))
+
+function mimeToExt(mime) {
+	return MIME_TO_EXT[mime] ?? mime.split('/').pop() ?? 'bin'
+}
+
+function extToMime(ext) {
+	return EXT_TO_MIME[ext.toLowerCase()] ?? 'application/octet-stream'
 }

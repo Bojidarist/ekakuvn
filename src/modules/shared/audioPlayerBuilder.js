@@ -6,7 +6,10 @@ export function createAudioPlayer(asset, options = {}) {
 	const container = document.createElement('div')
 	container.className = className
 
-	const audio = new Audio(asset.dataUrl ?? asset.path)
+	// Only set src if we have a real URL — asset.path is a bare filename
+	// that doesn't resolve in the editor context.
+	const audio = new Audio()
+	if (asset.dataUrl) audio.src = asset.dataUrl
 
 	const playBtn = document.createElement('button')
 	playBtn.textContent = '\u25B6'

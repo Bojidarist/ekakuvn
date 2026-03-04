@@ -253,7 +253,9 @@ export class PropertiesPanel {
 			previewBox.className = 'prop-asset-preview'
 
 			const video = document.createElement('video')
-			video.src = asset.dataUrl ?? asset.path
+			// Only set src if we have a real URL — asset.path is a bare filename
+			// that doesn't resolve in the editor context.
+			if (asset.dataUrl) video.src = asset.dataUrl
 			video.controls = true
 			video.style.width = '100%'
 			video.style.display = 'block'

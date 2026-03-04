@@ -4,6 +4,7 @@ import { TimelineDataManager } from './timelineDataManager.js'
 import { UndoManager } from './undoManager.js'
 import { ProjectPersistence } from './projectPersistence.js'
 import { migrateProject } from './projectMigration.js'
+import { assetDB } from '../shared/assetDB.js'
 
 export class EditorState {
 	#project = null
@@ -85,6 +86,7 @@ export class EditorState {
 
 	newProject() {
 		this.#pushUndo()
+		this.#clearStorage() // fire-and-forget; clears localStorage + IDB
 		this.#initProject()
 		this.#emit('projectChanged', this.#project)
 	}
@@ -93,6 +95,48 @@ export class EditorState {
 		this.#pushUndo()
 		this.#project = structuredClone(projectData)
 		migrateProject(this.#project)
+
+		this.#syncManagers()
+		this.#currentSceneId = this.#project.startScene ?? this.#project.scenes[0]?.id ?? null
+		this.#selectedElementId = null
+		this.#undoManager.reset()
+		this.#autoSave()
+		this.#emit('projectChanged', this.#project)
+		this.#emit('sceneChanged', this.#currentSceneId)
+	}
+
+	/**
+	 * Load a project from imported file data.
+	 * Any embedded dataUrls are migrated into IndexedDB and then kept in-memory.
+	 * Assets that have no embedded dataUrl are re-hydrated from IndexedDB.
+	 *
+	 * @param {object} projectData
+	 * @param {boolean} [skipStorageClear=false] Pass true when the caller has
+	 *   already cleared IDB and pre-populated it with the new asset blobs (e.g.
+	 *   zip project import).  If false (default) localStorage and IDB are wiped
+	 *   first so stale data from the previous project is removed.
+	 */
+	async loadProjectFromFile(projectData, skipStorageClear = false) {
+		this.#pushUndo()
+		if (!skipStorageClear) {
+			// Clear stale localStorage and IDB data before loading new project
+			await this.#clearStorage()
+		} else {
+			// Still clear localStorage even if IDB was managed by the caller
+			this.#persistence.clearStorage()
+		}
+		this.#project = structuredClone(projectData)
+		migrateProject(this.#project)
+
+		// Migrate embedded dataUrls into IndexedDB; hydrate missing ones from IDB
+		for (const asset of this.#project.assets) {
+			if (asset.dataUrl) {
+				await assetDB.putDataUrl(asset.id, asset.dataUrl)
+				// Keep dataUrl in-memory; autoSave will strip it
+			} else {
+				asset.dataUrl = await assetDB.get(asset.id) ?? null
+			}
+		}
 
 		this.#syncManagers()
 		this.#currentSceneId = this.#project.startScene ?? this.#project.scenes[0]?.id ?? null
@@ -328,6 +372,7 @@ export class EditorState {
 	removeAsset(assetId) {
 		this.#pushUndo()
 		this.#assetManager.removeAsset(assetId)
+		assetDB.delete(assetId) // fire-and-forget
 		this.#autoSave()
 	}
 
@@ -335,6 +380,15 @@ export class EditorState {
 		this.#pushUndo()
 		this.#assetManager.updateAsset(assetId, updates)
 		this.#autoSave()
+	}
+
+	/**
+	 * Update an asset's in-memory fields without recording an undo snapshot
+	 * or triggering an auto-save.  Used to cache the dataUrl after it has been
+	 * stored in IndexedDB — the binary data is NOT persisted to localStorage.
+	 */
+	updateAssetInMemory(assetId, updates) {
+		this.#assetManager.updateAsset(assetId, updates)
 	}
 
 	getAssetsByType(type) {
@@ -434,6 +488,13 @@ export class EditorState {
 		for (const asset of script.assets) {
 			delete asset.name
 			delete asset.folderId
+			// Strip blob URLs — they are editor-window-local and cannot be used by
+			// the runtime iframe or a standalone player.  Assets without an embedded
+			// base64 dataUrl will fall back to IndexedDB (same-origin preview) or
+			// the path field (deployed project).
+			if (asset.dataUrl && asset.dataUrl.startsWith('blob:')) {
+				asset.dataUrl = null
+			}
 		}
 
 		// Remove folders (editor-only organization)
@@ -490,8 +551,8 @@ export class EditorState {
 
 	// --- Persistence ---
 
-	tryRestoreFromAutoSave() {
-		const saved = this.#persistence.tryRestore()
+	async tryRestoreFromAutoSave() {
+		const saved = await this.#persistence.tryRestoreAsync()
 		if (saved) {
 			this.#project = saved
 			this.#syncManagers()
@@ -499,6 +560,14 @@ export class EditorState {
 			return true
 		}
 		return false
+	}
+
+	/**
+	 * Clear localStorage and IndexedDB for the current project.
+	 * Called by ScriptSerializer before re-populating IDB from a zip archive.
+	 */
+	async clearStorage() {
+		await this.#clearStorage()
 	}
 
 	// --- Private ---
@@ -533,6 +602,11 @@ export class EditorState {
 		this.#sceneManager.setProject(this.#project)
 		this.#assetManager.setProject(this.#project)
 		this.#timelineManager.setProject(this.#project)
+	}
+
+	async #clearStorage() {
+		this.#persistence.clearStorage()
+		await assetDB.clearAll()
 	}
 
 	#pushUndo() {

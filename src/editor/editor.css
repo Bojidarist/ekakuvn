@@ -567,6 +567,42 @@ button.toggle-active {
 	text-overflow: ellipsis;
 }
 
+/* Asset panel storage usage bar */
+
+.asset-usage-bar {
+	flex-shrink: 0;
+	padding: 6px 10px 8px;
+	border-top: 1px solid var(--border-color);
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.asset-usage-track {
+	height: 4px;
+	background: var(--bg-input);
+	border-radius: 2px;
+	overflow: hidden;
+}
+
+.asset-usage-fill {
+	height: 100%;
+	background: var(--accent);
+	border-radius: 2px;
+	transition: width 0.3s ease, background 0.3s ease;
+	width: 0%;
+}
+
+.asset-usage-fill.near-full {
+	background: var(--danger);
+}
+
+.asset-usage-label {
+	font-size: 10px;
+	color: var(--text-secondary);
+	text-align: center;
+}
+
 /* --- Center panel (canvas) --- */
 
 #panel-center {
@@ -1948,4 +1984,48 @@ body.resizing-row {
 	background: var(--accent-dim);
 	color: var(--accent);
 	border-radius: 2px;
+}
+
+/* --- Loading spinner overlay --- */
+
+#loading-spinner-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 9999;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: rgba(0, 0, 0, 0.55);
+	transition: opacity 0.15s;
+}
+
+#loading-spinner-overlay.loading-spinner-hidden {
+	opacity: 0;
+	pointer-events: none;
+}
+
+.loading-spinner-box {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 14px;
+}
+
+.loading-spinner-ring {
+	width: 48px;
+	height: 48px;
+	border: 4px solid var(--border-color);
+	border-top-color: var(--accent);
+	border-radius: 50%;
+	animation: spinner-spin 0.7s linear infinite;
+}
+
+@keyframes spinner-spin {
+	to { transform: rotate(360deg); }
+}
+
+.loading-spinner-msg {
+	font-size: 13px;
+	color: var(--text-secondary);
+	min-height: 1em;
 }

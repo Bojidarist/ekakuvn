@@ -95,7 +95,7 @@ export class AssetPreview {
 		meta.textContent = asset.type
 
 		const video = document.createElement('video')
-		video.src = asset.dataUrl ?? asset.path
+		if (asset.dataUrl) video.src = asset.dataUrl
 		video.controls = true
 		video.style.cssText = 'max-width: 100%; max-height: 400px; display: block; margin: 8px auto 0;'
 		this.#activeVideo = video
