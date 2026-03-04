@@ -1,4 +1,5 @@
 import { EkakuRuntime } from './runtime/runtime.js'
+import { readAsJson } from './shared/compression.js'
 
 export { EkakuRuntime }
 
@@ -15,7 +16,14 @@ export class Ekakuvn {
 		this.options = { ...this.options, ...options }
 	}
 
-	async loadScript(script) {
+	async loadScript(urlOrScript) {
+		let script = urlOrScript
+		if (typeof urlOrScript === 'string') {
+			const res = await fetch(urlOrScript)
+			const buffer = await res.arrayBuffer()
+			const json = await readAsJson(buffer)
+			script = JSON.parse(json)
+		}
 		this.#runtime = new EkakuRuntime(this.options.mainSelector, script)
 		return this
 	}

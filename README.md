@@ -35,7 +35,7 @@ Editor  -->  .evn script  -->  Runtime
   import { Ekakuvn } from './modules/ekakuvn.js'
 
   const game = new Ekakuvn({ mainSelector: '#game' })
-  await game.loadScript(script) // plain JSON object
+  await game.loadScript('my-novel.evn') // URL string or plain script object
   await game.start()
 </script>
 ```
