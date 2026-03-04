@@ -4,199 +4,117 @@ This document provides guidelines for AI coding agents working in the ekakuvn re
 
 ## Project Overview
 
-**ekakuvn** is a JavaScript-based visual novel/game engine that runs in the browser. It uses vanilla JavaScript with ES6+ modules and HTML5 Canvas for rendering.
+**ekakuvn** is a vanilla JavaScript visual novel engine for the browser. It has two main parts:
+
+- **Runtime**: Plays `.evn` scripts in a browser page using HTML5 Canvas
+- **Editor**: A full visual editor for creating `.evn` projects
+
+No build system, no transpilation, no frameworks. Code runs directly in the browser as native ES6 modules.
 
 ## Project Structure
 
 ```
 ekakuvn/
 ├── src/
-│   ├── index.html          # Main HTML entry point
-│   ├── main.js             # Application entry point
+│   ├── index.html          # Runtime player entry point
+│   ├── main.js             # Runtime bootstrap
+│   ├── css/
+│   ├── editor/             # Editor entry point + styles
 │   └── modules/
-│       ├── ekakuvn.js      # Main game engine class
-│       ├── canvas.js       # Canvas rendering logic
-│       └── ekakuConfig.js  # Configuration management (localStorage)
+│       ├── ekakuvn.js      # Public API facade
+│       ├── ekakuConfig.js  # localStorage config wrapper
+│       ├── runtime/        # All runtime playback modules
+│       ├── editor/         # All editor UI modules
+│       └── shared/         # Utilities shared by both sides
 ```
 
-## Build, Lint, and Test Commands
+Read the actual source files to understand the current module layout before adding or moving code. The structure can change.
 
-This project currently has **no build system** - it uses native ES6 modules loaded directly in the browser.
+## Running the Application
 
-### Running the Application
-- Open `src/index.html` in a browser, or
-- Use a local development server:
-  ```bash
-  python3 -m http.server 8000 --directory src
-  # Then navigate to http://localhost:8000
-  ```
+No install step required. Serve `src/` with any HTTP server:
 
-### Testing
-- **No test framework is currently configured**
-- To add tests, consider using Vitest or Jest
-- Manual testing is done by opening index.html in a browser
+```bash
+python3 -m http.server 8000 --directory src
+```
 
-### Linting
-- **No linter is currently configured**
-- To add linting, consider ESLint with standard or airbnb config
+- Runtime: `http://localhost:8000`
+- Editor: `http://localhost:8000/editor/`
 
-## Code Style Guidelines
+## Testing & Linting
+
+No test framework or linter is configured. Manual browser testing is the only form of verification. When making changes:
+
+1. Open the editor and verify the affected feature works
+2. Open the runtime with a test script and verify playback
+
+## Code Style
 
 ### Language & Modules
-- **Language**: Vanilla JavaScript (ES6+)
-- **Module System**: ES6 modules (`import`/`export`)
-- **Target**: Modern browsers with native ES6 module support
-- **No TypeScript**: This is a pure JavaScript project
-
-### Import Conventions
-```javascript
-// Always include .js extension in imports
-import { Ekakuvn } from './modules/ekakuvn.js'
-import { EkakuvnCanvas } from './canvas.js'
-
-// Use named exports for classes
-export class Ekakuvn { }
-
-// Group imports: external libraries first, then internal modules
-```
+- Vanilla JavaScript (ES6+), no TypeScript
+- Native ES6 modules — always include `.js` extension in imports
+- Named exports for classes; group external imports before internal ones
 
 ### Formatting
-- **Indentation**: Tabs (not spaces) - this is critical
-- **Line endings**: LF (Unix style)
-- **Quotes**: Single quotes for strings
-- **Semicolons**: Optional but used inconsistently - prefer omitting them for new code
-- **Braces**: K&R style (opening brace on same line)
-- **Blank lines**: Single blank line between methods
+- **Indentation**: Tabs (not spaces)
+- **Quotes**: Single quotes
+- **Semicolons**: Omit for new code
+- **Braces**: K&R style (opening brace on the same line)
+- **Blank lines**: One blank line between methods
 
-### Naming Conventions
-```javascript
-// Classes: PascalCase
-class Ekakuvn { }
-class EkakuvnCanvas { }
-class EkakuConfig { }
+### Naming
+- Classes: `PascalCase`
+- Variables and functions: `camelCase`
+- Private fields and methods: `#prefix` (ES2022 private fields)
+- Constants: `camelCase` (not `SCREAMING_SNAKE_CASE`)
 
-// Variables/functions: camelCase
-const mainSelector = '#ekakuvn-main'
-function setBackground(src) { }
+### Class Structure Order
+1. Public fields
+2. Private fields (`#`)
+3. Constructor
+4. Public methods
+5. Private methods (`#`)
 
-// Private fields: # prefix (ES2022 private fields)
-#config = {}
-#load() { }
-#save() { }
+### General Practices
+- Use `const` by default; `let` only when reassignment is needed; never `var`
+- Use ES2022 private fields (`#`) for encapsulation — not closure tricks or `_` conventions
+- Support method chaining by returning `this` from mutating public methods
+- Use `Object.assign` for concisely initializing DOM elements or plain objects
+- Prefer empty `catch {}` with a safe fallback over logging or re-throwing when failure is expected and recoverable
+- Write self-documenting code through clear naming; add comments only for non-obvious logic
+- Keep modules focused on a single responsibility; avoid god objects
 
-// Constants: camelCase (not SCREAMING_SNAKE_CASE)
-const storageKey = 'ekakuConfig'
-```
+## Architecture Principles
 
-### Class Structure
-```javascript
-export class Example {
-	// 1. Public fields first
-	options = {
-		width: 1280,
-		height: 720
-	}
+- **No framework**: Do not add React, Vue, or any UI framework
+- **Browser-native**: Avoid dependencies that require a build step; vendor small libs into `src/modules/shared/vendor/` if absolutely needed
+- **Separation of concerns**: The runtime and editor are independent; shared utilities live in `modules/shared/`
+- **Event-driven state**: UI panels subscribe to state change events rather than polling or directly coupling to each other
+- **Undo safety**: Any mutation to editor state must go through the central state manager so undo snapshots are captured
 
-	// 2. Private fields (with # prefix)
-	#config = {}
+## Storage Layers
 
-	// 3. Constructor
-	constructor(options) {
-		this.options = { ...this.options, ...options }
-	}
+There are three storage layers in use — understand which is appropriate before adding persistence:
 
-	// 4. Public methods
-	publicMethod() { }
-
-	// 5. Private methods (with # prefix)
-	#privateMethod() { }
-}
-```
-
-### Object Creation Patterns
-```javascript
-// Prefer Object.assign for creating and assigning properties
-const canvas = Object.assign(document.createElement('canvas'), {
-	width: this.options.width,
-	height: this.options.height
-})
-
-const background = Object.assign(new Image(), {
-	width: this.options.width,
-	height: this.options.height,
-	src: src,
-	onload: () => ctx.drawImage(background, 0, 0, width, height)
-})
-```
-
-### Variable Declarations
-- Use `const` by default
-- Use `let` when reassignment is needed
-- Never use `var`
-
-### Error Handling
-```javascript
-// Use try-catch for operations that may fail
-try {
-	this.#config = JSON.parse(localStorage.getItem(this.storageKey)) || {}
-} catch {
-	// Empty catch with fallback (no error parameter needed if unused)
-	this.#config = {}
-}
-```
-
-### Method Chaining
-```javascript
-// Support method chaining by returning `this`
-setBackground(src) {
-	this.canvas.setBackground(src)
-	return this
-}
-```
-
-### Comments
-- Minimal comments in existing code
-- Code should be self-documenting through clear naming
-- Add comments only when logic is non-obvious
+| Layer | Used for |
+|---|---|
+| IndexedDB | Large binary asset blobs |
+| localStorage | Project structure, config, save slots |
+| In-memory Blob URLs | Asset display; stripped before saving |
 
 ## Git Conventions
 
 ### Commit Messages
-```
-# Style: Imperative mood, capitalize first word, no period
-Format config code
-Remove commented return in config code
-Create EkakuConfig class
-
-# NOT:
-# - "Formatted config code" (past tense)
-# - "format config code" (lowercase)
-# - "Format config code." (period at end)
-```
+- Imperative mood, capitalize first word, no trailing period
+- Good: `Add transition effect to scene controller`
+- Bad: `added transition`, `Add transition.`
 
 ### Commit Scope
-- Keep commits focused on single changes
-- Refactoring and feature work should be separate commits
-
-## Important Architectural Notes
-
-1. **Canvas Management**: The EkakuvnCanvas class handles all canvas rendering and DOM manipulation
-2. **Configuration**: EkakuConfig uses localStorage for persistent configuration storage
-3. **No Framework**: This is intentionally a vanilla JS project - do not add React, Vue, etc.
-4. **Browser-Native**: Code runs directly in the browser without transpilation
-5. **Private Fields**: Use modern JavaScript private fields (`#`) for encapsulation
-
-## When Adding New Features
-
-1. Create new modules in `src/modules/` if needed
-2. Follow the existing class-based architecture
-3. Use ES6 private fields (`#`) for internal state
-4. Support method chaining where appropriate
-5. Keep the API simple and intuitive
-6. Manually test in a browser before committing
+- One logical change per commit
+- Keep refactoring and feature work in separate commits
 
 ## Files to Never Commit
-- `node_modules/` (if added)
+- `node_modules/`
 - `.DS_Store`
-- Editor-specific files (`.vscode/`, `.idea/`)
-- Build artifacts (if build system is added later)
+- Editor config dirs (`.vscode/`, `.idea/`)
+- Build artifacts
