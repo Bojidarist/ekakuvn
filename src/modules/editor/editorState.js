@@ -201,6 +201,12 @@ export class EditorState {
 		this.#autoSave()
 	}
 
+	reorderSceneSection(fromIndex, toIndex) {
+		this.#pushUndo()
+		this.#sceneManager.reorderSceneSection(fromIndex, toIndex)
+		this.#autoSave()
+	}
+
 	getScenesInSection(sectionId) {
 		return this.#sceneManager.getScenesInSection(sectionId)
 	}

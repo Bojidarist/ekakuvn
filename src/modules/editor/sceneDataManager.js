@@ -167,8 +167,15 @@ export class SceneDataManager {
 		this.#emit('scenesChanged', this.#project.scenes)
 	}
 
-	moveSceneSectionToSection(sectionId, targetParentId) {
+	reorderSceneSection(fromIndex, toIndex) {
 		if (!this.#project.sceneSections) return
+		const [moved] = this.#project.sceneSections.splice(fromIndex, 1)
+		const adjustedIndex = fromIndex < toIndex ? toIndex - 1 : toIndex
+		this.#project.sceneSections.splice(adjustedIndex, 0, moved)
+		this.#emit('scenesChanged', this.#project.scenes)
+	}
+
+	moveSceneSectionToSection(sectionId, targetParentId) {		if (!this.#project.sceneSections) return
 		const section = this.#project.sceneSections.find(s => s.id === sectionId)
 		if (!section) return
 

@@ -288,6 +288,31 @@ button.toggle-active {
 	outline-offset: -1px;
 }
 
+#scene-list li.drag-insert-before,
+#scene-list li.drag-insert-after {
+	position: relative;
+}
+
+#scene-list li.drag-insert-before::before,
+#scene-list li.drag-insert-after::after {
+	content: '';
+	position: absolute;
+	left: 8px;
+	right: 8px;
+	height: 2px;
+	background: var(--accent);
+	border-radius: 1px;
+	pointer-events: none;
+}
+
+#scene-list li.drag-insert-before::before {
+	top: -1px;
+}
+
+#scene-list li.drag-insert-after::after {
+	bottom: -1px;
+}
+
 .section-arrow {
 	font-size: 9px;
 	width: 12px;

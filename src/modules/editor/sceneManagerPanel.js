@@ -8,6 +8,10 @@ export class SceneManagerPanel {
 	#searchClearBtn = null
 	#searchQuery = ''
 
+	// Track the element currently showing a drop indicator so we can clear it
+	#dropIndicatorEl = null
+	#dropIndicatorClass = null
+
 	constructor(state) {
 		this.#state = state
 		this.#listEl = document.getElementById('scene-list')
@@ -49,6 +53,8 @@ export class SceneManagerPanel {
 	}
 
 	render() {
+		this.#dropIndicatorEl = null
+		this.#dropIndicatorClass = null
 		this.#listEl.innerHTML = ''
 		const currentId = this.#state.currentSceneId
 
@@ -57,6 +63,24 @@ export class SceneManagerPanel {
 		} else {
 			this.#renderSection(null, currentId, 0)
 		}
+	}
+
+	// --- Drop indicator helpers ---
+
+	#setDropIndicator(el, cls) {
+		if (this.#dropIndicatorEl === el && this.#dropIndicatorClass === cls) return
+		this.#clearDropIndicator()
+		el.classList.add(cls)
+		this.#dropIndicatorEl = el
+		this.#dropIndicatorClass = cls
+	}
+
+	#clearDropIndicator() {
+		if (this.#dropIndicatorEl && this.#dropIndicatorClass) {
+			this.#dropIndicatorEl.classList.remove(this.#dropIndicatorClass)
+		}
+		this.#dropIndicatorEl = null
+		this.#dropIndicatorClass = null
 	}
 
 	// --- Search mode ---
@@ -95,6 +119,45 @@ export class SceneManagerPanel {
 			const li = this.#renderSceneItem(scene, currentId, depth)
 			this.#listEl.appendChild(li)
 		}
+	}
+
+	// --- Drag-over helpers: determine before/after based on cursor position ---
+
+	#getInsertPosition(e, el) {
+		const rect = el.getBoundingClientRect()
+		const midY = rect.top + rect.height / 2
+		return e.clientY < midY ? 'before' : 'after'
+	}
+
+	// Attach reorder drag-over/dragleave/drop to an item row.
+	// onDrop(position, dragData) is called with 'before'|'after' and the parsed drag payload.
+	#attachReorderDrop(el, onDrop) {
+		el.addEventListener('dragover', (e) => {
+			// Only accept scene or scene-section drags
+			e.preventDefault()
+			e.dataTransfer.dropEffect = 'move'
+			const pos = this.#getInsertPosition(e, el)
+			this.#setDropIndicator(el, pos === 'before' ? 'drag-insert-before' : 'drag-insert-after')
+		})
+
+		el.addEventListener('dragleave', (e) => {
+			// Only clear if we're leaving the element itself (not moving to a child)
+			if (!el.contains(e.relatedTarget)) {
+				this.#clearDropIndicator()
+			}
+		})
+
+		el.addEventListener('drop', (e) => {
+			e.preventDefault()
+			const pos = this.#getInsertPosition(e, el)
+			this.#clearDropIndicator()
+			try {
+				const data = JSON.parse(e.dataTransfer.getData('text/plain'))
+				onDrop(pos, data)
+			} catch {
+				// Invalid drag data
+			}
+		})
 	}
 
 	#renderSectionItem(section, currentId, depth) {
@@ -170,35 +233,51 @@ export class SceneManagerPanel {
 			this.#showSectionContextMenu(e, section)
 		})
 
-		// Drop zone for scenes/sections being dragged into this section
-		header.addEventListener('dragover', (e) => {
-			e.preventDefault()
-			e.dataTransfer.dropEffect = 'move'
-			header.classList.add('drop-target')
-		})
-		header.addEventListener('dragleave', () => {
-			header.classList.remove('drop-target')
-		})
-		header.addEventListener('drop', (e) => {
-			e.preventDefault()
-			header.classList.remove('drop-target')
-			try {
-				const data = JSON.parse(e.dataTransfer.getData('text/plain'))
-				if (data.type === 'scene') {
-					this.#state.moveSceneToSection(data.sceneId, section.id)
-				} else if (data.type === 'scene-section' && data.sectionId !== section.id) {
-					this.#state.moveSceneSectionToSection(data.sectionId, section.id)
-				}
-			} catch {
-				// Not a valid drag
-			}
-		})
-
 		// Drag the section itself
 		header.draggable = true
 		header.addEventListener('dragstart', (e) => {
 			e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'scene-section', sectionId: section.id }))
 			e.dataTransfer.effectAllowed = 'move'
+			// Small delay so the drag image doesn't show the indicator
+			setTimeout(() => header.classList.remove('drag-insert-before', 'drag-insert-after'), 0)
+		})
+
+		// Reorder drop: insert before/after this section header
+		this.#attachReorderDrop(header, (pos, data) => {
+			if (data.type === 'scene-section' && data.sectionId !== section.id) {
+				// Reorder or re-parent the dragged section relative to this one
+				const allSections = this.#state.sceneSections
+				const fromIdx = allSections.findIndex(s => s.id === data.sectionId)
+				let toIdx = allSections.findIndex(s => s.id === section.id)
+				if (fromIdx === -1 || toIdx === -1) return
+
+				// Re-parent to same parent as target, then reorder
+				const targetParentId = section.parentId ?? null
+				this.#state.moveSceneSectionToSection(data.sectionId, targetParentId)
+
+				// Recompute indices after re-parent (state re-renders, so read fresh)
+				const updatedSections = this.#state.sceneSections
+				const newFrom = updatedSections.findIndex(s => s.id === data.sectionId)
+				let newTo = updatedSections.findIndex(s => s.id === section.id)
+				if (newFrom === -1 || newTo === -1) return
+				if (pos === 'after') newTo += 1
+				if (newFrom !== newTo) {
+					this.#state.reorderSceneSection(newFrom, newTo)
+				}
+			} else if (data.type === 'scene') {
+				// Drop a scene before/after this section — move into same parent section
+				const targetSectionId = section.parentId ?? null
+				this.#state.moveSceneToSection(data.sceneId, targetSectionId)
+				// Reorder the scene to appear before/after the first scene in the target section
+				const scenes = this.#state.scenes
+				const fromIdx = scenes.findIndex(s => s.id === data.sceneId)
+				// Find the first scene in this section and insert before it
+				const firstSceneInSection = scenes.find(s => (s.sectionId ?? null) === targetSectionId)
+				let toIdx = firstSceneInSection ? scenes.findIndex(s => s.id === firstSceneInSection.id) : scenes.length
+				if (fromIdx !== -1 && fromIdx !== toIdx) {
+					this.#state.reorderScenes(fromIdx, toIdx)
+				}
+			}
 		})
 
 		this.#listEl.appendChild(header)
@@ -264,6 +343,35 @@ export class SceneManagerPanel {
 		li.addEventListener('dragstart', (e) => {
 			e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'scene', sceneId: scene.id }))
 			e.dataTransfer.effectAllowed = 'move'
+			setTimeout(() => li.classList.remove('drag-insert-before', 'drag-insert-after'), 0)
+		})
+
+		// Reorder drop: insert before/after this scene
+		this.#attachReorderDrop(li, (pos, data) => {
+			if (data.type === 'scene' && data.sceneId !== scene.id) {
+				const scenes = this.#state.scenes
+				const fromIdx = scenes.findIndex(s => s.id === data.sceneId)
+				let toIdx = scenes.findIndex(s => s.id === scene.id)
+				if (fromIdx === -1 || toIdx === -1) return
+
+				// Move to the same section as target
+				const targetSectionId = scene.sectionId ?? null
+				this.#state.moveSceneToSection(data.sceneId, targetSectionId)
+
+				// Recompute indices after section move
+				const updatedScenes = this.#state.scenes
+				const newFrom = updatedScenes.findIndex(s => s.id === data.sceneId)
+				let newTo = updatedScenes.findIndex(s => s.id === scene.id)
+				if (newFrom === -1 || newTo === -1) return
+				if (pos === 'after') newTo += 1
+				if (newFrom !== newTo) {
+					this.#state.reorderScenes(newFrom, newTo)
+				}
+			} else if (data.type === 'scene-section') {
+				// Drop a section before/after this scene — re-parent section to same parent as scene's section
+				const targetParentId = scene.sectionId ?? null
+				this.#state.moveSceneSectionToSection(data.sectionId, targetParentId)
+			}
 		})
 
 		return li
