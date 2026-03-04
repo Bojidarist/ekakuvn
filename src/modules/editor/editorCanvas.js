@@ -103,12 +103,29 @@ export class EditorCanvas {
 		this.#activeBgAssetId = this.#state.getActiveBackground(scene.id, idx)
 		this.#activeDialogue = this.#getActiveDialogue(scene, idx)
 		this.#activeVideoAssetId = this.#getActiveVideo(scene, idx)
+		this.#textboxVisible = this.#getDialogueVisible(idx)
 
 		this.#preloadSceneAssets()
 	}
 
-	#getActiveDialogue(scene, upToIndex) {
-		if (!scene.timeline || scene.timeline.length === 0) return null
+	#getDialogueVisible(upToIndex) {
+		const scene = this.#state.currentScene
+		if (!scene?.timeline) return true
+
+		const limit = upToIndex !== undefined ? upToIndex + 1 : scene.timeline.length
+		let visible = true
+
+		for (let i = 0; i < limit && i < scene.timeline.length; i++) {
+			const node = scene.timeline[i]
+			if (node.type === 'toggleDialogue') {
+				visible = node.data.show
+			}
+		}
+
+		return visible
+	}
+
+	#getActiveDialogue(scene, upToIndex) {		if (!scene.timeline || scene.timeline.length === 0) return null
 
 		const limit = upToIndex !== undefined ? upToIndex + 1 : scene.timeline.length
 		let dialogue = null

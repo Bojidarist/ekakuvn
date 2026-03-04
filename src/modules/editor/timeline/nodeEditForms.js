@@ -22,6 +22,8 @@ export function buildEditFields(node, scene, state) {
 		case 'wait': return buildWaitFields(node)
 		case 'choice': return buildChoiceFields(node, scene, state)
 		case 'video': return buildVideoFields(node, state)
+		case 'toggleDialogue': return buildToggleDialogueFields(node)
+		case 'effect': return buildEffectFields(node)
 		default: return []
 	}
 }
@@ -79,6 +81,21 @@ export function collectEditFields(type, container, originalData = {}) {
 				loop: checked('loop'),
 				volume: Math.min(1, Math.max(0, parseFloat(val('volume')) || 1.0))
 			}
+
+		case 'toggleDialogue':
+			return { show: val('show') === 'true' }
+
+		case 'effect': {
+			const effectType = val('effectType') || 'reset'
+			return {
+				effectType,
+				amount: num('amount') || null,
+				color: val('color') || '#ffffff',
+				intensity: num('intensity') || 8,
+				duration: parseInt(val('duration')) || 500,
+				frequency: num('frequency') || 2
+			}
+		}
 
 		case 'choice': {
 			const choices = []
@@ -386,8 +403,7 @@ function buildChoiceFields(node, scene, state) {	const fields = []
 	return fields
 }
 
-function buildVideoFields(node, state) {
-	const fields = []
+function buildVideoFields(node, state) {	const fields = []
 
 	fields.push(makeField('Asset', () => {
 		const select = document.createElement('select')
@@ -434,6 +450,165 @@ function buildVideoFields(node, state) {
 	}))
 
 	fields.push(optionsRow)
+
+	return fields
+}
+
+function buildToggleDialogueFields(node) {
+	const fields = []
+
+	fields.push(makeField('Dialogue box', () => {
+		const select = document.createElement('select')
+		select.dataset.field = 'show'
+		for (const [val, label] of [['true', 'Show'], ['false', 'Hide']]) {
+			const opt = document.createElement('option')
+			opt.value = val
+			opt.textContent = label
+			if (String(node.data.show ?? true) === val) opt.selected = true
+			select.appendChild(opt)
+		}
+		return select
+	}))
+
+	return fields
+}
+
+function buildEffectFields(node) {
+	const fields = []
+	const d = node.data
+
+	const effectTypeSelect = document.createElement('select')
+	effectTypeSelect.dataset.field = 'effectType'
+
+	const groups = [
+		{ label: 'Reset', options: [['reset', 'Reset all effects']] },
+		{ label: 'Color / Filter', options: [
+			['negate', 'Negate (invert)'],
+			['grayscale', 'Grayscale'],
+			['sepia', 'Sepia'],
+			['blur', 'Blur'],
+			['brightness', 'Brightness'],
+			['contrast', 'Contrast'],
+			['saturate', 'Saturate'],
+			['hue', 'Hue rotate']
+		]},
+		{ label: 'Screen Animation', options: [
+			['shake', 'Shake'],
+			['sway', 'Sway'],
+			['bounce', 'Bounce'],
+			['tilt', 'Tilt'],
+			['zoom-pulse', 'Zoom pulse'],
+			['flash', 'Flash']
+		]}
+	]
+
+	for (const group of groups) {
+		const optgroup = document.createElement('optgroup')
+		optgroup.label = group.label
+		for (const [val, label] of group.options) {
+			const opt = document.createElement('option')
+			opt.value = val
+			opt.textContent = label
+			if (val === (d.effectType ?? 'reset')) opt.selected = true
+			optgroup.appendChild(opt)
+		}
+		effectTypeSelect.appendChild(optgroup)
+	}
+
+	const typeWrapper = document.createElement('div')
+	typeWrapper.className = 'node-edit-field'
+	const typeLabel = document.createElement('label')
+	typeLabel.textContent = 'Effect type'
+	typeWrapper.appendChild(typeLabel)
+	typeWrapper.appendChild(effectTypeSelect)
+	fields.push(typeWrapper)
+
+	// Container for conditional params
+	const paramsContainer = document.createElement('div')
+	paramsContainer.dataset.field = 'effectParams'
+	fields.push(paramsContainer)
+
+	const renderConditionalParams = (effectType) => {
+		paramsContainer.innerHTML = ''
+		const colorAmountTypes = ['blur', 'brightness', 'contrast', 'saturate', 'hue']
+		const animTypes = ['shake', 'sway', 'bounce', 'tilt', 'zoom-pulse']
+
+		if (colorAmountTypes.includes(effectType)) {
+			paramsContainer.appendChild(makeField('Amount', () => {
+				const input = document.createElement('input')
+				input.type = 'number'
+				input.step = '1'
+				input.value = d.amount ?? ''
+				input.placeholder = effectType === 'blur' ? 'px' : effectType === 'hue' ? 'deg' : '%'
+				input.dataset.field = 'amount'
+				return input
+			}))
+		}
+
+		if (animTypes.includes(effectType)) {
+			const row = document.createElement('div')
+			row.className = 'node-edit-row'
+			row.appendChild(makeField('Intensity', () => {
+				const input = document.createElement('input')
+				input.type = 'number'
+				input.step = '1'
+				input.min = '0'
+				input.value = d.intensity ?? 8
+				input.dataset.field = 'intensity'
+				return input
+			}))
+			row.appendChild(makeField('Duration (ms)', () => {
+				const input = document.createElement('input')
+				input.type = 'number'
+				input.step = '50'
+				input.min = '0'
+				input.value = d.duration ?? 500
+				input.dataset.field = 'duration'
+				return input
+			}))
+			paramsContainer.appendChild(row)
+
+			if (['sway', 'bounce', 'tilt', 'zoom-pulse'].includes(effectType)) {
+				paramsContainer.appendChild(makeField('Frequency (Hz)', () => {
+					const input = document.createElement('input')
+					input.type = 'number'
+					input.step = '0.5'
+					input.min = '0.1'
+					input.value = d.frequency ?? 2
+					input.dataset.field = 'frequency'
+					return input
+				}))
+			}
+		}
+
+		if (effectType === 'flash') {
+			const row = document.createElement('div')
+			row.className = 'node-edit-row'
+			row.appendChild(makeField('Color', () => {
+				const input = document.createElement('input')
+				input.type = 'color'
+				input.value = d.color ?? '#ffffff'
+				input.dataset.field = 'color'
+				return input
+			}))
+			row.appendChild(makeField('Duration (ms)', () => {
+				const input = document.createElement('input')
+				input.type = 'number'
+				input.step = '50'
+				input.min = '0'
+				input.value = d.duration ?? 300
+				input.dataset.field = 'duration'
+				return input
+			}))
+			paramsContainer.appendChild(row)
+		}
+	}
+
+	renderConditionalParams(d.effectType ?? 'reset')
+
+	effectTypeSelect.addEventListener('change', () => {
+		renderConditionalParams(effectTypeSelect.value)
+	})
 
 	return fields
 }

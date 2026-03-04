@@ -14,7 +14,9 @@ export class TimelineDataManager {
 		sound: { auto: true, data: { assetId: null } },
 		wait: { auto: true, data: { duration: 1000 } },
 		choice: { auto: false, data: { choices: [{ text: '', targetSceneId: null }] } },
-		video: { auto: false, data: { assetId: null, loop: false, volume: 1.0 } }
+		video: { auto: false, data: { assetId: null, loop: false, volume: 1.0 } },
+		toggleDialogue: { auto: true, data: { show: true } },
+		effect: { auto: true, data: { effectType: 'reset', amount: null, color: '#ffffff', intensity: 8, duration: 500, frequency: 2 } }
 	}
 
 	constructor(emit) {

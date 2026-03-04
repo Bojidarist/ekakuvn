@@ -18,14 +18,16 @@ export class SceneController {
 	#running = false
 	#onSceneChange = null
 	#onEnd = null
+	#effectManager = null
 
-	constructor({ renderer, assetLoader, audioEngine, dialogueBox, transitionManager, themeManager }) {
+	constructor({ renderer, assetLoader, audioEngine, dialogueBox, transitionManager, themeManager, effectManager }) {
 		this.#renderer = renderer
 		this.#assetLoader = assetLoader
 		this.#audioEngine = audioEngine
 		this.#dialogueBox = dialogueBox
 		this.#transitionManager = transitionManager ?? null
 		this.#themeManager = themeManager ?? null
+		this.#effectManager = effectManager ?? null
 		this.#characterAnimator = new CharacterAnimator()
 	}
 
@@ -107,6 +109,7 @@ export class SceneController {
 		this.#activeCharacters.clear()
 		this.#currentBackground = null
 		this.#stopVideo()
+		this.#effectManager?.reset()
 
 		// Set up initial empty layers
 		this.#refreshBackgroundLayer()
@@ -313,6 +316,14 @@ export class SceneController {
 			case 'video':
 				await this.#playVideo(node.assetId, node.loop, node.volume, node.auto)
 				break
+
+			case 'toggleDialogue':
+				this.#dialogueBox.setForceHidden(!node.show)
+				break
+
+			case 'effect':
+				this.#effectManager?.apply(node)
+				break
 		}
 	}
 
@@ -453,6 +464,10 @@ export class SceneController {
 					}
 					break
 
+				case 'toggleDialogue':
+					this.#dialogueBox.setForceHidden(!node.show)
+					break
+
 				// dialogue, sound, wait, choice are skipped during replay
 			}
 		}
@@ -507,6 +522,7 @@ export class SceneController {
 		this.#running = false
 		this.#dialogueBox.hide()
 		this.#stopVideo()
+		this.#effectManager?.reset()
 	}
 
 	getState() {

@@ -40,6 +40,12 @@ export function renderTimelineNodeProps(container, node, scene, state) {
 		case 'video':
 			renderVideoNodeProps(container, node, scene, state)
 			break
+		case 'toggleDialogue':
+			renderToggleDialogueNodeProps(container, node, scene, state)
+			break
+		case 'effect':
+			renderEffectNodeProps(container, node, scene, state)
+			break
 		default:
 			addReadonly(container, 'Type', node.type)
 			break
@@ -511,4 +517,87 @@ function renderVideoNodeProps(container, node, scene, state) {
 	hint.className = 'props-hint-sm'
 	hint.style.marginTop = '8px'
 	container.appendChild(hint)
+}
+
+function renderToggleDialogueNodeProps(container, node, scene, state) {
+	const header = document.createElement('h4')
+	header.textContent = 'ToggleDialogue'
+	header.className = 'props-section-header'
+	container.appendChild(header)
+
+	const actions = [
+		{ id: 'true', name: 'Show' },
+		{ id: 'false', name: 'Hide' }
+	]
+	addSelect(container, 'Dialogue box', String(node.data.show ?? true), actions, (val) => {
+		state.updateTimelineNode(scene.id, node.id, { data: { show: val === 'true' } })
+	})
+}
+
+function renderEffectNodeProps(container, node, scene, state) {
+	const header = document.createElement('h4')
+	header.textContent = 'Effect'
+	header.className = 'props-section-header'
+	container.appendChild(header)
+
+	const effectTypes = [
+		{ id: 'reset', name: 'Reset all effects' },
+		{ id: 'negate', name: 'Negate (invert)' },
+		{ id: 'grayscale', name: 'Grayscale' },
+		{ id: 'sepia', name: 'Sepia' },
+		{ id: 'blur', name: 'Blur' },
+		{ id: 'brightness', name: 'Brightness' },
+		{ id: 'contrast', name: 'Contrast' },
+		{ id: 'saturate', name: 'Saturate' },
+		{ id: 'hue', name: 'Hue rotate' },
+		{ id: 'shake', name: 'Shake' },
+		{ id: 'sway', name: 'Sway' },
+		{ id: 'bounce', name: 'Bounce' },
+		{ id: 'tilt', name: 'Tilt' },
+		{ id: 'zoom-pulse', name: 'Zoom pulse' },
+		{ id: 'flash', name: 'Flash' }
+	]
+
+	const currentType = node.data.effectType ?? 'reset'
+	addSelect(container, 'Effect type', currentType, effectTypes, (val) => {
+		state.updateTimelineNode(scene.id, node.id, { data: { effectType: val } })
+	})
+
+	const colorAmountTypes = ['blur', 'brightness', 'contrast', 'saturate', 'hue']
+	const animTypes = ['shake', 'sway', 'bounce', 'tilt', 'zoom-pulse']
+
+	if (colorAmountTypes.includes(currentType)) {
+		const placeholder = currentType === 'blur' ? 'px' : currentType === 'hue' ? 'deg' : '%'
+		addGroup(container, `Amount (${placeholder})`, 'number', node.data.amount ?? '', (val) => {
+			state.updateTimelineNode(scene.id, node.id, { data: { amount: parseFloat(val) || null } })
+		}, { step: '1' })
+	}
+
+	if (animTypes.includes(currentType)) {
+		addRow(container, [
+			{ label: 'Intensity', type: 'number', value: node.data.intensity ?? 8, step: '1', min: '0', onChange: (val) => {
+				state.updateTimelineNode(scene.id, node.id, { data: { intensity: parseFloat(val) || 8 } })
+			}},
+			{ label: 'Duration (ms)', type: 'number', value: node.data.duration ?? 500, step: '50', min: '0', onChange: (val) => {
+				state.updateTimelineNode(scene.id, node.id, { data: { duration: parseInt(val) || 500 } })
+			}}
+		])
+
+		if (['sway', 'bounce', 'tilt', 'zoom-pulse'].includes(currentType)) {
+			addGroup(container, 'Frequency (Hz)', 'number', node.data.frequency ?? 2, (val) => {
+				state.updateTimelineNode(scene.id, node.id, { data: { frequency: parseFloat(val) || 2 } })
+			}, { step: '0.5', min: '0.1' })
+		}
+	}
+
+	if (currentType === 'flash') {
+		addRow(container, [
+			{ label: 'Color', type: 'color', value: node.data.color ?? '#ffffff', onChange: (val) => {
+				state.updateTimelineNode(scene.id, node.id, { data: { color: val } })
+			}},
+			{ label: 'Duration (ms)', type: 'number', value: node.data.duration ?? 300, step: '50', min: '0', onChange: (val) => {
+				state.updateTimelineNode(scene.id, node.id, { data: { duration: parseInt(val) || 300 } })
+			}}
+		])
+	}
 }

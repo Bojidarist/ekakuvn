@@ -23,6 +23,9 @@ export class DialogueBox {
 	// When true, input events are ignored (menu is open, game is paused)
 	paused = false
 
+	// When true, dialogue box is suppressed without clearing text state (toggleDialogue node)
+	#forceHidden = false
+
 	constructor(renderer, theme = null) {
 		this.#renderer = renderer
 		this.#theme = theme
@@ -129,6 +132,7 @@ export class DialogueBox {
 	}
 
 	draw(renderer) {
+		if (this.#forceHidden) return
 		if (this.#state === 'idle') return
 
 		const w = renderer.width
@@ -229,6 +233,10 @@ export class DialogueBox {
 		this.#revealedChars = 0
 		this.#choices = []
 		this.#hoveredChoice = -1
+	}
+
+	setForceHidden(hidden) {
+		this.#forceHidden = hidden
 	}
 
 	dispose() {

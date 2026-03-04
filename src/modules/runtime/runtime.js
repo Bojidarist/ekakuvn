@@ -9,6 +9,7 @@ import { ThemeManager } from './themeManager.js'
 import { TitleScreen } from './titleScreen.js'
 import { MenuScreen } from './menuScreen.js'
 import { LoadingScreen } from './loadingScreen.js'
+import { EffectManager } from './effectManager.js'
 
 export class EkakuRuntime {
 	#renderer = null
@@ -27,6 +28,7 @@ export class EkakuRuntime {
 	#titleScreen = null
 	#menuScreen = null
 	#loadingScreen = null
+	#effectManager = null
 
 	// Event handlers
 	#boundEscapeHandler = null
@@ -71,13 +73,16 @@ export class EkakuRuntime {
 
 		this.#transitionManager = new TransitionManager(this.#renderer)
 
+		this.#effectManager = new EffectManager(this.#renderer)
+
 		this.#sceneController = new SceneController({
 			renderer: this.#renderer,
 			assetLoader: this.#assetLoader,
 			audioEngine: this.#audioEngine,
 			dialogueBox: this.#dialogueBox,
 			transitionManager: this.#transitionManager,
-			themeManager: this.#themeManager
+			themeManager: this.#themeManager,
+			effectManager: this.#effectManager
 		})
 
 		// Compute script hash for save manager
@@ -119,6 +124,7 @@ export class EkakuRuntime {
 				this.#dialogueBox.draw(renderer)
 			}
 		})
+		this.#renderer.setLayer('flash', this.#effectManager.getFlashLayerFn())
 		this.#renderer.setLayer('transition', (renderer) => {
 			this.#transitionManager.draw(renderer)
 		})
@@ -175,6 +181,7 @@ export class EkakuRuntime {
 			if (!this.#paused && this.#phase === 'playing') {
 				this.#dialogueBox.update(dt)
 				this.#sceneController.update(dt)
+				this.#effectManager.update(dt)
 			}
 			this.#transitionManager.update(dt)
 		})

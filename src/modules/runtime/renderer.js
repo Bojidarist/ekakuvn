@@ -4,6 +4,7 @@ export class Renderer {
 	#layers = []
 	#animationId = null
 	#running = false
+	#screenTransform = null // null = identity; { tx, ty, rotation, scale }
 
 	options = {
 		width: 1280,
@@ -415,14 +416,48 @@ export class Renderer {
 		if (layer) layer.visible = visible
 	}
 
+	/**
+	 * Set a CSS filter on the canvas element.
+	 * @param {string} filterStr - e.g. 'grayscale(100%) blur(4px)' or 'none'
+	 */
+	setFilter(filterStr) {
+		this.#canvas.style.filter = filterStr
+	}
+
+	/**
+	 * Set a screen-space transform applied to all layers during renderLayers().
+	 * Pass null to clear (identity).
+	 * @param {{ tx: number, ty: number, rotation: number, scale: number }|null} transform
+	 */
+	setScreenTransform(transform) {
+		this.#screenTransform = transform
+	}
+
 	renderLayers() {
 		this.clear()
+
+		const transform = this.#screenTransform
+		if (transform) {
+			const cx = this.options.width / 2
+			const cy = this.options.height / 2
+			this.#ctx.save()
+			this.#ctx.translate(cx, cy)
+			this.#ctx.translate(transform.tx ?? 0, transform.ty ?? 0)
+			this.#ctx.rotate(transform.rotation ?? 0)
+			this.#ctx.scale(transform.scale ?? 1, transform.scale ?? 1)
+			this.#ctx.translate(-cx, -cy)
+		}
+
 		for (const layer of this.#layers) {
 			if (layer.visible && layer.draw) {
 				this.#ctx.save()
 				layer.draw(this)
 				this.#ctx.restore()
 			}
+		}
+
+		if (transform) {
+			this.#ctx.restore()
 		}
 	}
 
