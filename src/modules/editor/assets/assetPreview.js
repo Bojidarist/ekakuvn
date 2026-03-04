@@ -7,6 +7,7 @@ import { createAudioPlayer } from '../../shared/audioPlayerBuilder.js'
 
 export class AssetPreview {
 	#activeAudio = null
+	#activeVideo = null
 	#activeOverlay = null
 
 	/**
@@ -74,10 +75,76 @@ export class AssetPreview {
 	}
 
 	/**
+	 * Show a full-screen video preview modal with native video player.
+	 */
+	showVideo(asset) {
+		this.close()
+
+		const overlay = document.createElement('div')
+		overlay.className = 'preview-overlay'
+
+		const modal = document.createElement('div')
+		modal.className = 'preview-modal'
+
+		const title = document.createElement('div')
+		title.className = 'preview-modal-title'
+		title.textContent = asset.name ?? asset.id
+
+		const meta = document.createElement('div')
+		meta.className = 'preview-modal-meta'
+		meta.textContent = asset.type
+
+		const video = document.createElement('video')
+		video.src = asset.dataUrl ?? asset.path
+		video.controls = true
+		video.style.cssText = 'max-width: 100%; max-height: 400px; display: block; margin: 8px auto 0;'
+		this.#activeVideo = video
+
+		video.addEventListener('loadedmetadata', () => {
+			const w = Math.round(video.videoWidth)
+			const h = Math.round(video.videoHeight)
+			const dur = video.duration ? `${video.duration.toFixed(1)}s` : ''
+			const sizeBytes = asset.dataUrl
+				? Math.round((asset.dataUrl.length - asset.dataUrl.indexOf(',') - 1) * 3 / 4)
+				: null
+			const sizeStr = sizeBytes != null ? formatFileSize(sizeBytes) : 'unknown size'
+			const parts = [`${w} \u00D7 ${h}`, asset.type]
+			if (dur) parts.push(dur)
+			parts.push(sizeStr)
+			meta.textContent = parts.join(' \u2022 ')
+		})
+
+		const closeBtn = document.createElement('button')
+		closeBtn.className = 'preview-modal-close'
+		closeBtn.textContent = '\u00D7'
+		closeBtn.addEventListener('click', () => this.close())
+
+		modal.appendChild(title)
+		modal.appendChild(meta)
+		modal.appendChild(video)
+		overlay.appendChild(modal)
+		overlay.appendChild(closeBtn)
+
+		overlay.addEventListener('click', (e) => {
+			if (e.target === overlay) this.close()
+		})
+
+		const onKey = (e) => {
+			if (e.key === 'Escape') {
+				this.close()
+				document.removeEventListener('keydown', onKey)
+			}
+		}
+		document.addEventListener('keydown', onKey)
+
+		document.body.appendChild(overlay)
+		this.#activeOverlay = { overlay, onKey }
+	}
+
+	/**
 	 * Show a full-screen audio preview modal with player controls.
 	 */
-	showAudio(asset) {
-		this.close()
+	showAudio(asset) {		this.close()
 
 		const overlay = document.createElement('div')
 		overlay.className = 'preview-overlay'
@@ -135,6 +202,15 @@ export class AssetPreview {
 			this.#activeOverlay = null
 		}
 		this.#stopAudio()
+		this.#stopVideo()
+	}
+
+	#stopVideo() {
+		if (this.#activeVideo) {
+			this.#activeVideo.pause()
+			this.#activeVideo.src = ''
+			this.#activeVideo = null
+		}
 	}
 
 	#stopAudio() {

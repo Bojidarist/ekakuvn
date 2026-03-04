@@ -21,6 +21,7 @@ export function buildEditFields(node, scene, state) {
 		case 'sound': return buildAssetFields(node, 'sound', state)
 		case 'wait': return buildWaitFields(node)
 		case 'choice': return buildChoiceFields(node, scene, state)
+		case 'video': return buildVideoFields(node, state)
 		default: return []
 	}
 }
@@ -71,6 +72,13 @@ export function collectEditFields(type, container, originalData = {}) {
 
 		case 'wait':
 			return { duration: Math.max(0, parseInt(val('duration')) || 0) }
+
+		case 'video':
+			return {
+				assetId: val('assetId') || null,
+				loop: checked('loop'),
+				volume: Math.min(1, Math.max(0, parseFloat(val('volume')) || 1.0))
+			}
 
 		case 'choice': {
 			const choices = []
@@ -327,8 +335,7 @@ function buildWaitFields(node) {
 	return fields
 }
 
-function buildChoiceFields(node, scene, state) {
-	const fields = []
+function buildChoiceFields(node, scene, state) {	const fields = []
 	const choices = node.data.choices ?? []
 
 	for (let i = 0; i < choices.length; i++) {
@@ -375,6 +382,58 @@ function buildChoiceFields(node, scene, state) {
 	addBtn.className = 'node-edit-add-choice'
 	addBtn.dataset.field = 'add-choice'
 	fields.push(addBtn)
+
+	return fields
+}
+
+function buildVideoFields(node, state) {
+	const fields = []
+
+	fields.push(makeField('Asset', () => {
+		const select = document.createElement('select')
+		select.dataset.field = 'assetId'
+		const emptyOpt = document.createElement('option')
+		emptyOpt.value = ''
+		emptyOpt.textContent = '(none)'
+		select.appendChild(emptyOpt)
+
+		for (const asset of state.getAssetsByType('video')) {
+			const opt = document.createElement('option')
+			opt.value = asset.id
+			opt.textContent = asset.name || asset.id
+			if (asset.id === node.data.assetId) opt.selected = true
+			select.appendChild(opt)
+		}
+		return select
+	}))
+
+	const optionsRow = document.createElement('div')
+	optionsRow.className = 'node-edit-row'
+
+	optionsRow.appendChild(makeField('Loop', () => {
+		const label = document.createElement('label')
+		label.className = 'node-edit-checkbox'
+		const check = document.createElement('input')
+		check.type = 'checkbox'
+		check.checked = node.data.loop ?? false
+		check.dataset.field = 'loop'
+		label.appendChild(check)
+		label.appendChild(document.createTextNode(' Loop'))
+		return label
+	}))
+
+	optionsRow.appendChild(makeField('Volume', () => {
+		const input = document.createElement('input')
+		input.type = 'number'
+		input.step = '0.1'
+		input.min = '0'
+		input.max = '1'
+		input.value = node.data.volume ?? 1.0
+		input.dataset.field = 'volume'
+		return input
+	}))
+
+	fields.push(optionsRow)
 
 	return fields
 }

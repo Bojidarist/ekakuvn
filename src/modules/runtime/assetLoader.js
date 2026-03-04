@@ -55,6 +55,8 @@ export class AssetLoader {
 				resource = await this.#loadImage(src)
 			} else if (type === 'music' || type === 'sound') {
 				resource = await this.#loadAudio(src)
+			} else if (type === 'video') {
+				resource = await this.#loadVideo(src)
 			} else {
 				console.warn(`AssetLoader: unknown asset type "${type}" for "${id}"`)
 			}
@@ -100,6 +102,31 @@ export class AssetLoader {
 			audio.addEventListener('error', onError)
 			audio.src = path
 			audio.load()
+		})
+	}
+
+	#loadVideo(path) {
+		return new Promise((resolve, reject) => {
+			const video = document.createElement('video')
+			video.preload = 'auto'
+			video.muted = true
+
+			const onCanPlay = () => {
+				video.removeEventListener('canplaythrough', onCanPlay)
+				video.removeEventListener('error', onError)
+				resolve(video)
+			}
+
+			const onError = () => {
+				video.removeEventListener('canplaythrough', onCanPlay)
+				video.removeEventListener('error', onError)
+				reject(new Error(`Failed to load video: ${path}`))
+			}
+
+			video.addEventListener('canplaythrough', onCanPlay)
+			video.addEventListener('error', onError)
+			video.src = path
+			video.load()
 		})
 	}
 

@@ -46,6 +46,7 @@ export class AssetDataManager {
 				if (node.type === 'music' && node.data.assetId === assetId) return false
 				if (node.type === 'sound' && node.data.assetId === assetId) return false
 				if (node.type === 'showCharacter' && node.data.assetId === assetId) return false
+				if (node.type === 'video' && node.data.assetId === assetId) return false
 				return true
 			})
 

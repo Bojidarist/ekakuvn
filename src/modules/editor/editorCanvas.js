@@ -9,6 +9,7 @@ export class EditorCanvas {
 	#canvas = null
 	#dragResize = null
 	#loadedImages = new Map()
+	#loadedVideos = new Map()
 	#previewNodeIndex = null // index in timeline, or null for full scene
 	#textboxVisible = true
 
@@ -16,6 +17,7 @@ export class EditorCanvas {
 	#activeChars = new Map()   // Map<nodeId, { nodeId, name, assetId, position, scale, flipped, expressions, currentExpression }>
 	#activeBgAssetId = null
 	#activeDialogue = null     // { speaker, text } or null
+	#activeVideoAssetId = null // assetId of the video node active at preview index, or null
 
 	constructor(state) {
 		this.#state = state
@@ -27,6 +29,7 @@ export class EditorCanvas {
 		// Set up layers
 		this.#renderer.setLayer('background', (r) => this.#drawBackground(r))
 		this.#renderer.setLayer('characters', (r) => this.#drawCharacters(r))
+		this.#renderer.setLayer('video', (r) => this.#drawVideo(r))
 		this.#renderer.setLayer('selection', (r) => this.#drawSelection(r))
 		this.#renderer.setLayer('textbox', (r) => this.#drawTextbox(r))
 		this.#renderer.setLayer('dropHint', () => {})
@@ -56,7 +59,7 @@ export class EditorCanvas {
 			this.#recomputeState()
 		})
 		this.#state.on('timelineChanged', () => this.#recomputeState())
-		this.#state.on('assetsChanged', () => this.#preloadSceneImages())
+		this.#state.on('assetsChanged', () => this.#preloadSceneAssets())
 		this.#state.on('projectChanged', () => {
 			this.#previewNodeIndex = null
 			this.#recomputeState()
@@ -91,6 +94,7 @@ export class EditorCanvas {
 			this.#activeChars = new Map()
 			this.#activeBgAssetId = null
 			this.#activeDialogue = null
+			this.#activeVideoAssetId = null
 			return
 		}
 
@@ -98,8 +102,9 @@ export class EditorCanvas {
 		this.#activeChars = this.#state.getActiveCharacters(scene.id, idx)
 		this.#activeBgAssetId = this.#state.getActiveBackground(scene.id, idx)
 		this.#activeDialogue = this.#getActiveDialogue(scene, idx)
+		this.#activeVideoAssetId = this.#getActiveVideo(scene, idx)
 
-		this.#preloadSceneImages()
+		this.#preloadSceneAssets()
 	}
 
 	#getActiveDialogue(scene, upToIndex) {
@@ -118,9 +123,20 @@ export class EditorCanvas {
 		return dialogue
 	}
 
+	#getActiveVideo(scene, upToIndex) {
+		if (!scene.timeline || scene.timeline.length === 0) return null
+
+		// A video node is "active" only at its exact index (it's a one-shot node)
+		if (upToIndex === undefined || upToIndex === null) return null
+
+		const node = scene.timeline[upToIndex]
+		if (node && node.type === 'video') return node.data.assetId ?? null
+		return null
+	}
+
 	// --- Image preloading ---
 
-	#preloadSceneImages() {
+	#preloadSceneAssets() {
 		// Preload background
 		if (this.#activeBgAssetId) {
 			this.#ensureImage(this.#activeBgAssetId)
@@ -134,6 +150,11 @@ export class EditorCanvas {
 					this.#ensureImage(exprAssetId)
 				}
 			}
+		}
+
+		// Preload video thumbnail for the active video node
+		if (this.#activeVideoAssetId) {
+			this.#ensureVideoThumbnail(this.#activeVideoAssetId)
 		}
 	}
 
@@ -150,10 +171,34 @@ export class EditorCanvas {
 		this.#loadedImages.set(assetId, img)
 	}
 
+	#ensureVideoThumbnail(assetId) {
+		if (!assetId) return
+		if (this.#loadedVideos.has(assetId)) return
+
+		const asset = this.#state.assets.find(a => a.id === assetId)
+		if (!asset || asset.type !== 'video') return
+
+		const video = document.createElement('video')
+		video.muted = true
+		video.preload = 'metadata'
+		video.src = asset.dataUrl ?? asset.path
+
+		// Seek to first frame so we can draw a thumbnail
+		video.addEventListener('loadedmetadata', () => {
+			video.currentTime = 0
+		}, { once: true })
+
+		this.#loadedVideos.set(assetId, video)
+	}
+
 	#getImage(assetId) {
 		const img = this.#loadedImages.get(assetId)
 		if (img && img.complete && img.naturalWidth > 0) return img
 		return null
+	}
+
+	#getVideoElement(assetId) {
+		return this.#loadedVideos.get(assetId) ?? null
 	}
 
 	// --- Drawing ---
@@ -215,6 +260,57 @@ export class EditorCanvas {
 
 			ctx.restore()
 		}
+	}
+
+	#drawVideo(renderer) {
+		if (!this.#activeVideoAssetId) return
+
+		const video = this.#getVideoElement(this.#activeVideoAssetId)
+		const w = renderer.width
+		const h = renderer.height
+
+		// Dim the background to indicate video overlay
+		const ctx = renderer.context
+		ctx.save()
+		ctx.fillStyle = 'rgba(0, 0, 0, 0.6)'
+		ctx.fillRect(0, 0, w, h)
+
+		// Draw video thumbnail frame if available
+		if (video && video.readyState >= 2 && video.videoWidth > 0) {
+			const vw = video.videoWidth
+			const vh = video.videoHeight
+			const scale = Math.min(w / vw, h / vh)
+			const drawW = vw * scale
+			const drawH = vh * scale
+			const drawX = (w - drawW) / 2
+			const drawY = (h - drawH) / 2
+			ctx.drawImage(video, drawX, drawY, drawW, drawH)
+		}
+
+		// Draw a play-icon overlay to indicate this is a video node
+		const iconSize = 64
+		const cx = w / 2
+		const cy = h / 2
+		ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'
+		ctx.beginPath()
+		ctx.arc(cx, cy, iconSize / 2, 0, Math.PI * 2)
+		ctx.fill()
+		ctx.fillStyle = '#ffffff'
+		ctx.beginPath()
+		ctx.moveTo(cx - 12, cy - 18)
+		ctx.lineTo(cx - 12, cy + 18)
+		ctx.lineTo(cx + 20, cy)
+		ctx.closePath()
+		ctx.fill()
+
+		// Label at bottom
+		const asset = this.#state.assets.find(a => a.id === this.#activeVideoAssetId)
+		const label = asset ? (asset.name ?? asset.id) : 'Video'
+		ctx.font = '16px sans-serif'
+		ctx.fillStyle = 'rgba(255,255,255,0.8)'
+		ctx.textAlign = 'center'
+		ctx.fillText(label, cx, h - 24)
+		ctx.restore()
 	}
 
 	#drawSelection(renderer) {
@@ -371,6 +467,13 @@ export class EditorCanvas {
 					data: { assetId }
 				})
 				this.#ensureImage(assetId)
+			} else if (assetType === 'video') {
+				this.#state.addTimelineNode(scene.id, {
+					type: 'video',
+					auto: false,
+					data: { assetId, loop: false, volume: 1.0 }
+				})
+				this.#ensureVideoThumbnail(assetId)
 			}
 		} catch {
 			// Invalid drop data

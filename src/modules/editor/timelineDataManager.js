@@ -13,7 +13,8 @@ export class TimelineDataManager {
 		music: { auto: true, data: { assetId: null, loop: true, action: 'play' } },
 		sound: { auto: true, data: { assetId: null } },
 		wait: { auto: true, data: { duration: 1000 } },
-		choice: { auto: false, data: { choices: [{ text: '', targetSceneId: null }] } }
+		choice: { auto: false, data: { choices: [{ text: '', targetSceneId: null }] } },
+		video: { auto: false, data: { assetId: null, loop: false, volume: 1.0 } }
 	}
 
 	constructor(emit) {

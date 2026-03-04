@@ -113,6 +113,7 @@ export class EkakuRuntime {
 		// Set up render layers
 		this.#renderer.setLayer('background', () => {})
 		this.#renderer.setLayer('characters', () => {})
+		this.#renderer.setLayer('video', () => {})
 		this.#renderer.setLayer('dialogue', (renderer) => {
 			if (this.#phase === 'playing') {
 				this.#dialogueBox.draw(renderer)

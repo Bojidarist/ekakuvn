@@ -37,6 +37,9 @@ export function renderTimelineNodeProps(container, node, scene, state) {
 		case 'choice':
 			renderChoiceNodeProps(container, node, scene, state)
 			break
+		case 'video':
+			renderVideoNodeProps(container, node, scene, state)
+			break
 		default:
 			addReadonly(container, 'Type', node.type)
 			break
@@ -481,4 +484,31 @@ function renderChoiceNodeProps(container, node, scene, state) {
 		state.updateTimelineNode(scene.id, node.id, { data: { choices: updated } })
 	})
 	container.appendChild(addChoiceBtn)
+}
+
+function renderVideoNodeProps(container, node, scene, state) {
+	const header = document.createElement('h4')
+	header.textContent = 'Video'
+	header.className = 'props-section-header'
+	container.appendChild(header)
+
+	const videoAssets = state.getAssetsByType('video')
+	addSelect(container, 'Video asset', node.data.assetId ?? '', videoAssets, (val) => {
+		state.updateTimelineNode(scene.id, node.id, { data: { assetId: val || null } })
+	})
+
+	addCheckbox(container, 'Loop', node.data.loop ?? false, (val) => {
+		state.updateTimelineNode(scene.id, node.id, { data: { loop: val } })
+	})
+
+	addGroup(container, 'Volume', 'number', node.data.volume ?? 1.0, (val) => {
+		const clamped = Math.min(1, Math.max(0, parseFloat(val) || 1.0))
+		state.updateTimelineNode(scene.id, node.id, { data: { volume: clamped } })
+	}, { step: '0.1', min: '0', max: '1' })
+
+	const hint = document.createElement('div')
+	hint.textContent = 'Plays a video fullscreen. When auto-advance is off, the timeline waits until the video ends before continuing.'
+	hint.className = 'props-hint-sm'
+	hint.style.marginTop = '8px'
+	container.appendChild(hint)
 }

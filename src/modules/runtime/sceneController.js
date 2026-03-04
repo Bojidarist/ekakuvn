@@ -14,6 +14,7 @@ export class SceneController {
 	#characterAnimator = null
 	#activeCharacters = new Map() // name -> { assetId, position, scale, flipped, expressions, currentExpression }
 	#currentBackground = null
+	#currentVideo = null          // { videoEl, loop, volume } or null
 	#running = false
 	#onSceneChange = null
 	#onEnd = null
@@ -105,6 +106,7 @@ export class SceneController {
 		this.#nodeIndex = startNodeIndex
 		this.#activeCharacters.clear()
 		this.#currentBackground = null
+		this.#stopVideo()
 
 		// Set up initial empty layers
 		this.#refreshBackgroundLayer()
@@ -307,6 +309,10 @@ export class SceneController {
 				}
 				return // Don't continue timeline after choice
 			}
+
+			case 'video':
+				await this.#playVideo(node.assetId, node.loop, node.volume, node.auto)
+				break
 		}
 	}
 
@@ -320,6 +326,81 @@ export class SceneController {
 		if (!musicAsset || !musicAsset.resource) return
 
 		this.#audioEngine.playMusic(musicAsset.resource, assetId, { loop })
+	}
+
+	async #playVideo(assetId, loop = false, volume = 1.0, autoAdvance = false) {
+		if (!assetId) return
+
+		const videoAsset = this.#assetLoader.getAsset(assetId)
+		if (!videoAsset || !videoAsset.resource) return
+
+		const videoEl = videoAsset.resource
+		videoEl.loop = loop
+		videoEl.muted = false
+		videoEl.volume = Math.min(1, Math.max(0, volume ?? 1.0))
+		videoEl.currentTime = 0
+
+		this.#currentVideo = { videoEl, loop, volume }
+		this.#refreshVideoLayer()
+
+		videoEl.play().catch(() => {})
+
+		if (!autoAdvance) {
+			// Wait for the video to finish (or loop = false end)
+			await new Promise((resolve) => {
+				const onEnd = () => {
+					videoEl.removeEventListener('ended', onEnd)
+					resolve()
+				}
+				videoEl.addEventListener('ended', onEnd)
+			})
+			this.#stopVideo()
+		}
+	}
+
+	#stopVideo() {
+		if (this.#currentVideo) {
+			const { videoEl } = this.#currentVideo
+			videoEl.pause()
+			videoEl.currentTime = 0
+			this.#currentVideo = null
+		}
+		// Clear the video layer
+		this.#renderer.setLayer('video', () => {})
+	}
+
+	#refreshVideoLayer() {
+		const current = this.#currentVideo
+		if (!current) {
+			this.#renderer.setLayer('video', () => {})
+			return
+		}
+
+		const { videoEl } = current
+
+		this.#renderer.setLayer('video', (renderer) => {
+			if (!videoEl || videoEl.readyState < 2) return
+
+			const w = renderer.width
+			const h = renderer.height
+			const vw = videoEl.videoWidth
+			const vh = videoEl.videoHeight
+
+			if (!vw || !vh) return
+
+			const scale = Math.min(w / vw, h / vh)
+			const drawW = vw * scale
+			const drawH = vh * scale
+			const drawX = (w - drawW) / 2
+			const drawY = (h - drawH) / 2
+
+			const ctx = renderer.context
+			ctx.save()
+			ctx.fillStyle = '#000000'
+			ctx.fillRect(0, 0, w, h)
+			ctx.drawImage(videoEl, drawX, drawY, drawW, drawH)
+			ctx.restore()
+		})
 	}
 
 	/**
@@ -411,6 +492,7 @@ export class SceneController {
 		this.#running = false
 		this.#dialogueBox.hide()
 		this.#audioEngine.stopMusic()
+		this.#stopVideo()
 
 		if (this.#onEnd) {
 			this.#onEnd()
@@ -424,6 +506,7 @@ export class SceneController {
 	stop() {
 		this.#running = false
 		this.#dialogueBox.hide()
+		this.#stopVideo()
 	}
 
 	getState() {

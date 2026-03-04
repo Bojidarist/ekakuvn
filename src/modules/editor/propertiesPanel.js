@@ -247,6 +247,32 @@ export class PropertiesPanel {
 			const { container: player, audio } = createAudioPlayer(asset, { className: 'audio-player-compact' })
 			this.#propAudio = audio
 			this.#contentEl.appendChild(player)
+		} else if (asset.type === 'video') {
+			// Compact video player
+			const previewBox = document.createElement('div')
+			previewBox.className = 'prop-asset-preview'
+
+			const video = document.createElement('video')
+			video.src = asset.dataUrl ?? asset.path
+			video.controls = true
+			video.style.width = '100%'
+			video.style.display = 'block'
+			video.title = 'Click to enlarge'
+			video.addEventListener('click', () => {
+				this.#state.emit('assetPreviewRequested', asset.id)
+			})
+
+			video.addEventListener('loadedmetadata', () => {
+				const w = video.videoWidth
+				const h = video.videoHeight
+				const dur = video.duration
+				const durStr = isFinite(dur) ? `${Math.round(dur)}s` : ''
+				const dimLabel = `${w} \u00D7 ${h}` + (durStr ? ` \u2022 ${durStr}` : '')
+				addReadonly(this.#contentEl, 'Dimensions', dimLabel)
+			})
+
+			previewBox.appendChild(video)
+			this.#contentEl.appendChild(previewBox)
 		}
 	}
 

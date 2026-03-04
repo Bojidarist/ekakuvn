@@ -13,11 +13,12 @@ export const nodeTypes = {
 	music: { label: 'music', color: '#1e40af', icon: '\uD83C\uDFB5' },
 	sound: { label: 'sfx', color: '#1e3a8a', icon: '\uD83D\uDD0A' },
 	wait: { label: 'wait', color: '#6b21a8', icon: '\u23F3' },
-	choice: { label: 'choice', color: '#0d9488', icon: '\u2934' }
+	choice: { label: 'choice', color: '#0d9488', icon: '\u2934' },
+	video: { label: 'video', color: '#065f46', icon: '\uD83C\uDFA5' }
 }
 
 /** Ordered list of element types for the elements panel. */
-export const elementOrder = ['dialogue', 'showCharacter', 'hideCharacter', 'expression', 'background', 'music', 'sound', 'wait', 'choice']
+export const elementOrder = ['dialogue', 'showCharacter', 'hideCharacter', 'expression', 'background', 'music', 'sound', 'wait', 'choice', 'video']
 
 /**
  * Get a human-readable type name for display.
@@ -34,7 +35,8 @@ export function friendlyTypeName(type) {
 		music: 'Music',
 		sound: 'Sound FX',
 		wait: 'Wait',
-		choice: 'Choice'
+		choice: 'Choice',
+		video: 'Video'
 	}
 	return names[type] ?? type
 }
@@ -76,6 +78,10 @@ export function getNodeSummary(node, state) {
 			return `Wait ${d.duration ?? 0}ms`
 		case 'choice':
 			return `${d.choices?.length ?? 0} choice(s)`
+		case 'video': {
+			const asset = d.assetId ? state.assets.find(a => a.id === d.assetId) : null
+			return asset ? (asset.name || asset.id) : '(none)'
+		}
 		default:
 			return node.type
 	}

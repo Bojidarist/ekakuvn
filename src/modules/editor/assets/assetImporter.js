@@ -59,6 +59,9 @@ export async function inferAssetType(file, dataUrl) {
 	if (file.type.startsWith('audio/')) {
 		return 'music'
 	}
+	if (file.type.startsWith('video/')) {
+		return 'video'
+	}
 	return 'character'
 }
 

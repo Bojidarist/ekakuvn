@@ -86,6 +86,8 @@ export class AssetManagerPanel {
 			const asset = this.#state.assets.find(a => a.id === assetId)
 			if (asset && (asset.type === 'background' || asset.type === 'character')) {
 				this.#preview.showImage(asset)
+			} else if (asset && asset.type === 'video') {
+				this.#preview.showVideo(asset)
 			}
 		})
 
@@ -203,7 +205,10 @@ export class AssetManagerPanel {
 		} else {
 			const icon = document.createElement('span')
 			icon.className = 'asset-type-icon'
-			icon.textContent = asset.type === 'music' ? '\u266B' : '\u266A'
+			if (asset.type === 'music') icon.textContent = '\u266B'
+			else if (asset.type === 'sound') icon.textContent = '\u266A'
+			else if (asset.type === 'video') icon.textContent = '\u25B6'
+			else icon.textContent = '\u2753'
 			item.appendChild(icon)
 		}
 
@@ -262,6 +267,8 @@ export class AssetManagerPanel {
 				this.#preview.showImage(asset)
 			} else if (asset.type === 'music' || asset.type === 'sound') {
 				this.#preview.showAudio(asset)
+			} else if (asset.type === 'video') {
+				this.#preview.showVideo(asset)
 			}
 		})
 
@@ -276,7 +283,7 @@ export class AssetManagerPanel {
 	#showAssetContextMenu(event, asset) {
 		const menu = createMenuContainer(event)
 
-		const types = ['background', 'character', 'music', 'sound']
+		const types = ['background', 'character', 'music', 'sound', 'video']
 		for (const type of types) {
 			const opt = createMenuOption(
 				(asset.type === type ? '\u2713 ' : '  ') + `Set as ${type}`,
